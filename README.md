@@ -1,6 +1,8 @@
 # Proving you are an adult without telling anyone who you are  
 > *Alexandre 'kidev' Poumaroux*   
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21533318.svg)](https://doi.org/10.5281/zenodo.21533318) 
+
 [English](#english) | [Français](#français)
 
 ## English
