@@ -1,0 +1,170 @@
+\begin{thebibliography}{10}
+
+\bibitem{aksy}
+Shweta Agrawal, Elena Kirshanova, Damien Stehl{\'e}, and Anshu Yadav.
+\newblock Practical, round-optimal lattice-based blind signatures.
+\newblock In {\em {ACM} Conference on Computer and Communications Security
+  ({CCS})}, 2022.
+
+\bibitem{bellrog}
+Mihir Bellare and Phillip Rogaway.
+\newblock Random oracles are practical: a paradigm for designing efficient
+  protocols.
+\newblock In {\em {ACM} Conference on Computer and Communications Security
+  ({CCS})}, 1993.
+
+\bibitem{stark}
+Eli Ben-Sasson, Iddo Bentov, Yinon Horesh, and Michael Riabzev.
+\newblock Scalable, transparent, and post-quantum secure computational
+  integrity.
+\newblock Cryptology ePrint Archive, Paper 2018/046, 2018.
+
+\bibitem{zerocash}
+Eli Ben-Sasson, Alessandro Chiesa, Christina Garman, Matthew Green, Ian Miers,
+  Eran Tromer, and Madars Virza.
+\newblock Zerocash: decentralized anonymous payments from {B}itcoin.
+\newblock In {\em {IEEE} Symposium on Security and Privacy}, 2014.
+
+\bibitem{bernsteincoll}
+Daniel~J. Bernstein.
+\newblock Cost analysis of hash collisions: will quantum computers make
+  {SHARCS} obsolete?
+\newblock In {\em Workshop on Special-Purpose Hardware for Attacking
+  Cryptographic Systems ({SHARCS})}, 2009.
+
+\bibitem{sphincs}
+Daniel~J. Bernstein, Andreas H{\"u}lsing, Stefan K{\"o}lbl, Ruben Niederhagen,
+  Joost Rijneveld, and Peter Schwabe.
+\newblock The {SPHINCS+} signature framework.
+\newblock In {\em {ACM} Conference on Computer and Communications Security
+  ({CCS})}, 2019.
+
+\bibitem{brands}
+Stefan Brands.
+\newblock {\em Rethinking Public Key Infrastructures and Digital Certificates:
+  Building in Privacy}.
+\newblock MIT Press, 2000.
+
+\bibitem{bht}
+Gilles Brassard, Peter H{\o}yer, and Alain Tapp.
+\newblock Quantum cryptanalysis of hash and claw-free functions.
+\newblock In {\em {LATIN} '98: Theoretical Informatics}, 1998.
+
+\bibitem{cl}
+Jan Camenisch and Anna Lysyanskaya.
+\newblock An efficient system for non-transferable anonymous credentials with
+  optional anonymity revocation.
+\newblock In {\em Advances in Cryptology: {EUROCRYPT} 2001}, 2001.
+
+\bibitem{picnic}
+Melissa Chase, David Derler, Steven Goldfeder, Claudio Orlandi, Sebastian
+  Ramacher, Christian Rechberger, Daniel Slamanig, and Greg Zaverucha.
+\newblock Post-quantum zero-knowledge and signatures from symmetric-key
+  primitives.
+\newblock In {\em {ACM} Conference on Computer and Communications Security
+  ({CCS})}, 2017.
+
+\bibitem{chaum}
+David Chaum.
+\newblock Blind signatures for untraceable payments.
+\newblock In {\em Advances in Cryptology: {CRYPTO} '82}, 1982.
+
+\bibitem{privacypass}
+Alex Davidson, Ian Goldberg, Nick Sullivan, George Tankersley, and Filippo
+  Valsorda.
+\newblock Privacy {P}ass: bypassing internet challenges anonymously.
+\newblock {\em Proceedings on Privacy Enhancing Technologies}, 2018(3), 2018.
+
+\bibitem{delpino}
+Rafa{\"e}l del Pino and Shuichi Katsumata.
+\newblock A new framework for more efficient round-optimal lattice-based
+  (partially) blind signature via trapdoor sampling.
+\newblock In {\em Advances in Cryptology: {CRYPTO} 2022}, 2022.
+
+\bibitem{qromfs}
+Jelle Don, Serge Fehr, Christian Majenz, and Christian Schaffner.
+\newblock Security of the {F}iat-{S}hamir transformation in the quantum
+  random-oracle model.
+\newblock In {\em Advances in Cryptology: {CRYPTO} 2019}, 2019.
+
+\bibitem{dilithium}
+L{\'e}o Ducas, Eike Kiltz, Tancr{\`e}de Lepoint, Vadim Lyubashevsky, Peter
+  Schwabe, Gregor Seiler, and Damien Stehl{\'e}.
+\newblock {CRYSTALS}-{D}ilithium: a lattice-based digital signature scheme.
+\newblock {\em {IACR} Transactions on Cryptographic Hardware and Embedded
+  Systems}, 2018(1), 2018.
+
+\bibitem{zkboo}
+Irene Giacomelli, Jesper Madsen, and Claudio Orlandi.
+\newblock {ZKBoo}: faster zero-knowledge for boolean circuits.
+\newblock In {\em {USENIX} Security Symposium}, 2016.
+
+\bibitem{gmr}
+Shafi Goldwasser, Silvio Micali, and Charles Rackoff.
+\newblock The knowledge complexity of interactive proof systems.
+\newblock {\em {SIAM} Journal on Computing}, 18(1), 1989.
+
+\bibitem{poseidon2}
+Lorenzo Grassi, Dmitry Khovratovich, and Markus Schofnegger.
+\newblock {P}oseidon2: a faster version of the {P}oseidon hash function.
+\newblock In {\em Progress in Cryptology: {AFRICACRYPT} 2023}, 2023.
+\newblock Reference implementation and known-answer tests:
+  \texttt{github.com/HorizenLabs/poseidon2}.
+
+\bibitem{grover}
+Lov~K. Grover.
+\newblock A fast quantum mechanical algorithm for database search.
+\newblock In {\em {ACM} Symposium on Theory of Computing ({STOC})}, 1996.
+
+\bibitem{semaphore}
+Kobi Gurkan, Koh~Wei Jie, and Barry Whitehat.
+\newblock Semaphore: zero-knowledge signaling on {E}thereum.
+\newblock Whitepaper, 2020.
+
+\bibitem{ikos}
+Yuval Ishai, Eyal Kushilevitz, Rafail Ostrovsky, and Amit Sahai.
+\newblock Zero-knowledge from secure multiparty computation.
+\newblock In {\em {ACM} Symposium on Theory of Computing ({STOC})}, 2007.
+
+\bibitem{kkw}
+Jonathan Katz, Vladimir Kolesnikov, and Xiao Wang.
+\newblock Improved non-interactive zero knowledge with applications to
+  post-quantum signatures.
+\newblock In {\em {ACM} Conference on Computer and Communications Security
+  ({CCS})}, 2018.
+
+\bibitem{merkle}
+Ralph~C. Merkle.
+\newblock A digital signature based on a conventional encryption function.
+\newblock In {\em Advances in Cryptology: {CRYPTO} '87}, 1987.
+
+\bibitem{fips202}
+{National Institute of Standards and Technology}.
+\newblock {FIPS} 202: {SHA-3} standard: permutation-based hash and
+  extendable-output functions.
+\newblock Technical report, U.S. Department of Commerce, 2015.
+
+\bibitem{fips204}
+{National Institute of Standards and Technology}.
+\newblock {FIPS} 204: module-lattice-based digital signature standard
+  ({ML-DSA}).
+\newblock Technical report, U.S. Department of Commerce, 2024.
+
+\bibitem{regev}
+Oded Regev.
+\newblock On lattices, learning with errors, random linear codes, and
+  cryptography.
+\newblock {\em Journal of the {ACM}}, 56(6), 2009.
+
+\bibitem{shor}
+Peter~W. Shor.
+\newblock Polynomial-time algorithms for prime factorization and discrete
+  logarithms on a quantum computer.
+\newblock {\em {SIAM} Review}, 41(2), 1999.
+
+\bibitem{w3cvc}
+{World Wide Web Consortium}.
+\newblock Verifiable credentials data model v2.0.
+\newblock {W3C} recommendation, W3C, 2025.
+
+\end{thebibliography}

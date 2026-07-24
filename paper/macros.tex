@@ -1,0 +1,21 @@
+% Shared macro definitions for paper.tex and paper.fr.tex.
+% One source of truth: a symbol renamed here is renamed in both papers.
+\newcommand{\Fp}{\mathbb{F}_p}
+\newcommand{\negl}{\mathsf{negl}}
+\newcommand{\LeafHash}{\mathsf{LeafHash}}
+\newcommand{\Compress}{\mathsf{Compress}}
+\newcommand{\PRF}{\mathsf{PRF}}
+\newcommand{\CtxHash}{\mathsf{CtxHash}}
+\newcommand{\Trunc}{\mathsf{Trunc}_4}
+\newcommand{\MerkleFold}{\mathsf{MerkleFold}}
+\newcommand{\RO}{\mathsf{RO}}
+\newcommand{\Enc}{\mathsf{Enc}}
+% Poseidon2 state width is t, so the Fiat-Shamir challenge vector is
+% chi; the per-threshold accumulators are calligraphic, so they do not
+% collide with the transcript body T.
+\newcommand{\chall}{\chi}
+\newcommand{\tree}{\mathcal{T}}
+\newcommand{\adv}{\mathcal{A}}
+% := without pulling in mathtools; arXiv has it, but one fewer package
+% is one fewer thing that can differ between their TeX Live and yours.
+\providecommand{\coloneqq}{\mathrel{\vcenter{\hbox{$:$}}}\!=}

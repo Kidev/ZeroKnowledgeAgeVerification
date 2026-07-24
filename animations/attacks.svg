@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif">
+  <rect width="960" height="540" fill="#0e1420"/>
+  <rect width="0" height="0" fill="none">
+    <animate id="cy" attributeName="x" from="0" to="0" dur="28.6s" begin="0s;cy.end"/>
+  </rect>
+
+  <text x="480" y="42" fill="#e5e7eb" font-size="24" text-anchor="middle" font-weight="600">Every cheat is rejected by the verifier, offline</text>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.4s" begin="cy.begin+1s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+27.6s" fill="freeze"/>
+    <rect x="60" y="90" width="270" height="180" rx="12" fill="#141d2e" stroke="#f87171" stroke-width="2"/>
+    <text x="195" y="120" fill="#f87171" font-size="16" text-anchor="middle" font-weight="600">Replay a captured token</text>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="cy.begin+2s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+27.6s" fill="freeze"/>
+    <text x="195" y="150" fill="#e5e7eb" font-size="13" text-anchor="middle">The attacker records a valid token,</text>
+    <text x="195" y="170" fill="#e5e7eb" font-size="13" text-anchor="middle">then presents it again later</text>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="cy.begin+4.5s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+27.6s" fill="freeze"/>
+    <text x="195" y="205" fill="#94a3b8" font-size="13" text-anchor="middle">Nonce n is already consumed;</text>
+    <text x="195" y="225" fill="#94a3b8" font-size="13" text-anchor="middle">a fresh nonce breaks the proof</text>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="cy.begin+6.9s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+27.6s" fill="freeze"/>
+    <circle cx="195" cy="300" r="24" fill="none" stroke="#f87171" stroke-width="4"/>
+    <line x1="181" y1="286" x2="209" y2="314" stroke="#f87171" stroke-width="4"/>
+    <line x1="209" y1="286" x2="181" y2="314" stroke="#f87171" stroke-width="4"/>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.4s" begin="cy.begin+7.8s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+27.6s" fill="freeze"/>
+    <rect x="345" y="90" width="270" height="180" rx="12" fill="#141d2e" stroke="#f87171" stroke-width="2"/>
+    <text x="480" y="120" fill="#f87171" font-size="16" text-anchor="middle" font-weight="600">Relay to another site</text>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="cy.begin+8.8s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+27.6s" fill="freeze"/>
+    <text x="480" y="150" fill="#e5e7eb" font-size="13" text-anchor="middle">A token minted for site A,</text>
+    <text x="480" y="170" fill="#e5e7eb" font-size="13" text-anchor="middle">presented at site B</text>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="cy.begin+10.6s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+27.6s" fill="freeze"/>
+    <text x="480" y="205" fill="#94a3b8" font-size="13" text-anchor="middle">The domain is hashed into the proof;</text>
+    <text x="480" y="225" fill="#94a3b8" font-size="13" text-anchor="middle">site B derives different challenges</text>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="cy.begin+13.2s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+27.6s" fill="freeze"/>
+    <circle cx="480" cy="300" r="24" fill="none" stroke="#f87171" stroke-width="4"/>
+    <line x1="466" y1="286" x2="494" y2="314" stroke="#f87171" stroke-width="4"/>
+    <line x1="494" y1="286" x2="466" y2="314" stroke="#f87171" stroke-width="4"/>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.4s" begin="cy.begin+14.1s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+27.6s" fill="freeze"/>
+    <rect x="630" y="90" width="270" height="180" rx="12" fill="#141d2e" stroke="#f87171" stroke-width="2"/>
+    <text x="765" y="120" fill="#f87171" font-size="16" text-anchor="middle" font-weight="600">Prove without a secret</text>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="cy.begin+15.1s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+27.6s" fill="freeze"/>
+    <text x="765" y="150" fill="#e5e7eb" font-size="13" text-anchor="middle">A minor or a bot with no enrolled</text>
+    <text x="765" y="170" fill="#e5e7eb" font-size="13" text-anchor="middle">leaf fabricates a proof</text>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="cy.begin+17.5s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+27.6s" fill="freeze"/>
+    <text x="765" y="205" fill="#94a3b8" font-size="13" text-anchor="middle">219 independent challenges;</text>
+    <text x="765" y="225" fill="#94a3b8" font-size="13" text-anchor="middle">a cheat survives with odds 2^-128</text>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="cy.begin+19.6s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+27.6s" fill="freeze"/>
+    <circle cx="765" cy="300" r="24" fill="none" stroke="#f87171" stroke-width="4"/>
+    <line x1="751" y1="286" x2="779" y2="314" stroke="#f87171" stroke-width="4"/>
+    <line x1="779" y1="286" x2="751" y2="314" stroke="#f87171" stroke-width="4"/>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.4s" begin="cy.begin+20.5s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+27.6s" fill="freeze"/>
+    <rect x="270" y="380" width="420" height="90" rx="12" fill="#141d2e" stroke="#4ade80" stroke-width="2"/>
+    <circle cx="320" cy="425" r="18" fill="#4ade80"/>
+    <path d="M311 425 l7 7 l12 -14" stroke="#0e1420" stroke-width="4" fill="none"/>
+    <text x="500" y="418" fill="#e5e7eb" font-size="15" text-anchor="middle">An honest proof from an enrolled adult:</text>
+    <text x="500" y="443" fill="#4ade80" font-size="15" text-anchor="middle">accepted, anonymously, every time</text>
+  </g>
+
+  <text x="480" y="520" fill="#94a3b8" font-size="14" text-anchor="middle" opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.6s" begin="cy.begin+23.4s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+27.6s" fill="freeze"/>
+    The proof is cryptographically bound to (site, month, root, pseudonym, nonce). Change any field and it is worthless.
+  </text>
+</svg>

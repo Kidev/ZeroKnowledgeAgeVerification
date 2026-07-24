@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+  <rect width="960" height="540" fill="#0e1420"/>
+  <rect width="0" height="0" fill="none">
+    <animate id="cy" attributeName="x" from="0" to="0" dur="32.8s" begin="0s;cy.end"/>
+  </rect>
+
+  <text x="480" y="42" fill="#e5e7eb" font-size="24" text-anchor="middle" font-weight="600">Inscription : seul un engagement brouillé quitte l'appareil</text>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.4s" begin="cy.begin+1s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+31.8s" fill="freeze"/>
+    <rect x="50" y="120" width="230" height="170" rx="12" fill="#141d2e" stroke="#4ade80" stroke-width="2"/>
+    <text x="165" y="150" fill="#4ade80" font-size="17" text-anchor="middle" font-weight="600">Portefeuille du citoyen</text>
+    <text x="165" y="185" fill="#e5e7eb" font-size="15" text-anchor="middle">Secret s : 256 bits aléatoires</text>
+    <text x="165" y="207" fill="#94a3b8" font-size="13" text-anchor="middle">Créé localement, jamais transmis</text>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.4s" begin="cy.begin+4.3s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+31.8s" fill="freeze"/>
+    <text x="165" y="248" fill="#e5e7eb" font-size="15" text-anchor="middle">feuille = LeafHash(s)</text>
+    <text x="165" y="270" fill="#94a3b8" font-size="13" text-anchor="middle">Un brouillage à sens unique de s</text>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.4s" begin="cy.begin+6.3s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+31.8s" fill="freeze"/>
+    <rect x="650" y="90" width="260" height="230" rx="12" fill="#141d2e" stroke="#fbbf24" stroke-width="2"/>
+    <text x="780" y="120" fill="#fbbf24" font-size="17" text-anchor="middle" font-weight="600">Gouvernement</text>
+    <text x="780" y="142" fill="#94a3b8" font-size="13" text-anchor="middle">Vérifie la majorité via l'état civil</text>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.4s" begin="cy.begin+7.8s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+31.8s" fill="freeze"/>
+    <g stroke="#334155" stroke-width="1.5">
+      <line x1="780" y1="180" x2="720" y2="225"/><line x1="780" y1="180" x2="840" y2="225"/>
+      <line x1="720" y1="225" x2="692" y2="268"/><line x1="720" y1="225" x2="748" y2="268"/>
+      <line x1="840" y1="225" x2="868" y2="268"/>
+    </g>
+    <circle cx="780" cy="180" r="11" fill="#fbbf24"/>
+    <circle cx="720" cy="225" r="8" fill="#475569"/><circle cx="840" cy="225" r="8" fill="#475569"/>
+    <circle cx="692" cy="268" r="8" fill="#475569"/><circle cx="748" cy="268" r="8" fill="#475569"/>
+    <circle cx="868" cy="268" r="8" fill="#475569"/>
+    <text x="780" y="167" fill="#fbbf24" font-size="12" text-anchor="middle">racine</text>
+    <text x="780" y="305" fill="#94a3b8" font-size="12" text-anchor="middle">Arbre de Merkle des engagements des adultes</text>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="cy.begin+10.1s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+31.8s" fill="freeze"/>
+    <line x1="290" y1="205" x2="640" y2="205" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="6 6" marker-end="url(#arr)" opacity="0.5"/>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="cy.begin+10.9s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+31.8s" fill="freeze"/>
+    <animate attributeName="opacity" from="1" to="0" dur="0.4s" begin="cy.begin+13.5s" fill="freeze"/>
+    <g transform="translate(300,178)">
+      <rect x="-60" y="-16" width="120" height="32" rx="16" fill="#4ade80">
+        <animateMotion path="M 0 0 L 320 0" dur="1.2s" begin="cy.begin+11.1s" fill="freeze"/>
+      </rect>
+      <text x="0" y="5" fill="#0e1420" font-size="14" text-anchor="middle" font-weight="600">feuille seule
+        <animateMotion path="M 0 0 L 320 0" dur="1.2s" begin="cy.begin+11.1s" fill="freeze"/>
+      </text>
+    </g>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="cy.begin+11.8s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+31.8s" fill="freeze"/>
+    <text x="465" y="232" fill="#94a3b8" font-size="13" text-anchor="middle">s reste chez vous ; seul le brouillage voyage</text>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="cy.begin+13.5s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+31.8s" fill="freeze"/>
+    <line x1="840" y1="225" x2="840" y2="225" stroke="#334155" stroke-width="1.5">
+      <set attributeName="x2" to="840" begin="cy.begin"/>
+      <set attributeName="y2" to="225" begin="cy.begin"/>
+      <animate attributeName="x2" from="840" to="812" dur="0.4s" begin="cy.begin+13.5s" fill="freeze"/>
+      <animate attributeName="y2" from="225" to="268" dur="0.4s" begin="cy.begin+13.5s" fill="freeze"/>
+    </line>
+    <circle cx="840" cy="225" r="8" fill="#475569"/>
+    <circle cx="812" cy="268" r="8" fill="#4ade80" opacity="0">
+      <set attributeName="opacity" to="0" begin="cy.begin"/>
+      <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="cy.begin+13.9s" fill="freeze"/>
+      <animate attributeName="r" values="8;12;8" dur="0.5s" begin="cy.begin+13.9s"/>
+    </circle>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="cy.begin+14.5s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+31.8s" fill="freeze"/>
+    <line x1="780" y1="325" x2="700" y2="355" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#arr)" opacity="0.6"/>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.4s" begin="cy.begin+15.3s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+31.8s" fill="freeze"/>
+    <rect x="360" y="360" width="560" height="130" rx="12" fill="#141d2e" stroke="#60a5fa" stroke-width="2"/>
+    <text x="640" y="390" fill="#60a5fa" font-size="16" text-anchor="middle" font-weight="600">Registre public : miroirs, diffusion, ajout seul</text>
+    <text x="390" y="420" fill="#e5e7eb" font-size="14">&#8226; La racine signée et toutes les feuilles brouillées</text>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="cy.begin+18.6s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+31.8s" fill="freeze"/>
+    <text x="390" y="444" fill="#94a3b8" font-size="14">&#8226; Une signature sur une valeur, rien par citoyen</text>
+    <text x="390" y="468" fill="#94a3b8" font-size="14">&#8226; Chacun peut vérifier qu'il ne fait que grandir</text>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.4s" begin="cy.begin+22.8s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+31.8s" fill="freeze"/>
+    <rect x="50" y="360" width="280" height="130" rx="12" fill="#141d2e" stroke="#475569" stroke-width="1.5"/>
+    <text x="190" y="390" fill="#e5e7eb" font-size="15" text-anchor="middle" font-weight="600">Registre du gouvernement</text>
+    <text x="72" y="418" fill="#94a3b8" font-size="13">&#8226; Sait : citoyen 4821, feuille 7</text>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="cy.begin+24.7s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+31.8s" fill="freeze"/>
+    <text x="72" y="442" fill="#4ade80" font-size="13">&#8226; Inoffensif même gardé à jamais</text>
+    <text x="72" y="466" fill="#4ade80" font-size="13">&#8226; Cette feuille ne réapparaît jamais</text>
+  </g>
+
+  <text x="480" y="520" fill="#94a3b8" font-size="14" text-anchor="middle" opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.6s" begin="cy.begin+27.8s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+31.8s" fill="freeze"/>
+    L'anonymat ne repose pas sur l'oubli du gouvernement, mais sur le fait qu'il ne voit jamais rien d'autre.
+  </text>
+</svg>

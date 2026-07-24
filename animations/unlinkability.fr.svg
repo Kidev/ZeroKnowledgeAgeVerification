@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif">
+  <defs>
+    <marker id="arrp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#a78bfa"/>
+    </marker>
+    <marker id="arrt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2dd4bf"/>
+    </marker>
+  </defs>
+  <rect width="960" height="540" fill="#0e1420"/>
+  <rect width="0" height="0" fill="none">
+    <animate id="cy" attributeName="x" from="0" to="0" dur="23.8s" begin="0s;cy.end"/>
+  </rect>
+
+  <text x="480" y="42" fill="#e5e7eb" font-size="24" text-anchor="middle" font-weight="600">Un citoyen, plusieurs sites : des pseudonymes impossibles à relier</text>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.4s" begin="cy.begin+1s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+22.8s" fill="freeze"/>
+    <rect x="380" y="90" width="200" height="100" rx="12" fill="#141d2e" stroke="#4ade80" stroke-width="2"/>
+    <text x="480" y="122" fill="#4ade80" font-size="17" text-anchor="middle" font-weight="600">Même portefeuille</text>
+    <text x="480" y="148" fill="#e5e7eb" font-size="14" text-anchor="middle">Un seul secret s</text>
+    <text x="480" y="170" fill="#94a3b8" font-size="12" text-anchor="middle">k = PRF(s, site, mois)</text>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.4s" begin="cy.begin+3.1s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+22.8s" fill="freeze"/>
+    <rect x="80" y="240" width="240" height="110" rx="12" fill="#141d2e" stroke="#a78bfa" stroke-width="2"/>
+    <text x="200" y="272" fill="#a78bfa" font-size="16" text-anchor="middle" font-weight="600">Site A</text>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="cy.begin+4.3s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+22.8s" fill="freeze"/>
+    <line x1="420" y1="195" x2="230" y2="235" stroke="#a78bfa" stroke-width="2" marker-end="url(#arrp)"/>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="cy.begin+5.1s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+22.8s" fill="freeze"/>
+    <text x="200" y="300" fill="#e5e7eb" font-size="14" text-anchor="middle">Voit le pseudonyme k_A = 7f3a...</text>
+    <text x="200" y="324" fill="#94a3b8" font-size="12" text-anchor="middle">Stable ici pendant un mois</text>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.4s" begin="cy.begin+7.3s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+22.8s" fill="freeze"/>
+    <rect x="640" y="240" width="240" height="110" rx="12" fill="#141d2e" stroke="#2dd4bf" stroke-width="2"/>
+    <text x="760" y="272" fill="#2dd4bf" font-size="16" text-anchor="middle" font-weight="600">Site B</text>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="cy.begin+8.5s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+22.8s" fill="freeze"/>
+    <line x1="540" y1="195" x2="730" y2="235" stroke="#2dd4bf" stroke-width="2" marker-end="url(#arrt)"/>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="cy.begin+9.3s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+22.8s" fill="freeze"/>
+    <text x="760" y="300" fill="#e5e7eb" font-size="14" text-anchor="middle">Voit le pseudonyme k_B = c91e...</text>
+    <text x="760" y="324" fill="#94a3b8" font-size="12" text-anchor="middle">Sans aucun lien avec k_A</text>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.4s" begin="cy.begin+11.5s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+22.8s" fill="freeze"/>
+    <rect x="230" y="390" width="500" height="100" rx="12" fill="#141d2e" stroke="#f87171" stroke-width="2"/>
+    <text x="480" y="418" fill="#f87171" font-size="15" text-anchor="middle" font-weight="600">Collusion : sites et gouvernement mettent tout en commun</text>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="cy.begin+13.3s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+22.8s" fill="freeze"/>
+    <text x="255" y="447" fill="#e5e7eb" font-size="13">&#8226; Registre : citoyen 4821, feuille 7</text>
+    <text x="255" y="470" fill="#e5e7eb" font-size="13">&#8226; k_A = 7f3a...   k_B = c91e...</text>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="cy.begin+15.7s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+22.8s" fill="freeze"/>
+    <text x="530" y="447" fill="#94a3b8" font-size="13">&#8226; Jointure sur quoi ?</text>
+    <text x="530" y="470" fill="#94a3b8" font-size="13">&#8226; Aucune clé commune</text>
+  </g>
+
+  <g opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.3s" begin="cy.begin+17.8s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+22.8s" fill="freeze"/>
+    <g stroke="#f87171" stroke-width="3">
+      <line x1="200" y1="355" x2="300" y2="388"/>
+      <line x1="760" y1="355" x2="660" y2="388"/>
+      <line x1="238" y1="362" x2="262" y2="386"/><line x1="262" y1="362" x2="238" y2="386"/>
+      <line x1="698" y1="362" x2="722" y2="386"/><line x1="722" y1="362" x2="698" y2="386"/>
+    </g>
+  </g>
+
+  <text x="480" y="520" fill="#94a3b8" font-size="14" text-anchor="middle" opacity="0">
+    <set attributeName="opacity" to="0" begin="cy.begin"/>
+    <animate attributeName="opacity" from="0" to="1" dur="0.6s" begin="cy.begin+18.7s" fill="freeze"/>
+    <animate attributeName="opacity" to="0" dur="0.6s" begin="cy.begin+22.8s" fill="freeze"/>
+    Les pseudonymes sont prouvés indistinguables de l'aléatoire : le lien vers les citoyens n'existe nulle part.
+  </text>
+</svg>

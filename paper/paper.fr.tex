@@ -1,0 +1,1132 @@
+\pdfoutput=1
+\documentclass[11pt]{article}
+
+\usepackage[margin=1.05in]{geometry}
+\usepackage[utf8]{inputenc}
+% Latin Modern with T1 when available (arXiv has it); plain CM otherwise
+\IfFileExists{lmodern.sty}{\usepackage[T1]{fontenc}\usepackage{lmodern}}{}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+
+\renewcommand{\abstractname}{R\'esum\'e}
+\renewcommand{\refname}{R\'ef\'erences}
+\renewcommand{\proofname}{Preuve}
+
+\newtheorem{theorem}{Th\'eor\`eme}
+\newtheorem{corollary}{Corollaire}
+\newtheorem{proposition}{Proposition}
+\newtheorem{lemma}{Lemme}
+\theoremstyle{definition}
+\newtheorem{definitionx}{D\'efinition}
+
+\input{macros}
+
+\title{Appartenance anonyme à un ensemble, post-quantique,\\
+pour une vérification d'âge en ligne sans surveillance}
+\author{Alexandre `kidev' Poumaroux}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Nous présentons un protocole qui permet aux sites web de vérifier qu'un visiteur a atteint
+la majorité tout en rendant cryptographiquement impossible, pour le site vérifieur comme
+pour le gouvernement émetteur, de savoir qui est ce visiteur ou quels sites un citoyen
+donné fréquente. La construction centrale est l'appartenance anonyme à un ensemble : le
+gouvernement publie une unique racine de Merkle signée engageant l'ensemble des
+engagements de hachage des adultes vérifiés, et le portefeuille open source de chaque
+citoyen prouve à divulgation nulle de connaissance qu'il connaît la préimage d'une feuille
+sous cette racine, ainsi que la dérivation correcte d'une clé pseudonyme propre à chaque
+site et à chaque époque. La vérification est effectuée entièrement hors ligne par le site,
+contre la racine publiée ; le gouvernement est structurellement absent de chaque flux
+d'usage, de sorte qu'il n'existe aucun trafic de vérification, aucun horodatage et aucun
+compteur qui puisse être journalisé, corrélé ou réquisitionné. Toutes les primitives sont
+fondées sur le hachage ou sur les réseaux euclidiens : Poseidon2 sur le corps de
+Goldilocks pour les engagements, la compression de Merkle et la dérivation des pseudonymes
+; le système de preuve MPC-in-the-head ZKBoo compilé par Fiat-Shamir pour l'argument à
+divulgation nulle ; et ML-DSA-65 (FIPS 204) pour l'authentification de la racine. La
+conception résiste donc aux adversaires quantiques. Nous donnons des définitions par jeux
+et des preuves complètes pour l'anonymat, l'infalsifiabilité et la résistance au rejeu, un
+traitement honnête de la seule propriété qu'aucun système d'accréditations ne peut imposer
+(le prêt volontaire), et les performances mesurées d'une implémentation de référence
+complète : à 128 bits de solidité sur un arbre d'une capacité de 4,29 milliards de
+feuilles, la génération de preuve prend 4,7\,s et la vérification 3,0\,s sur un seul c\oe
+ur d'un AMD Ryzen~9 7950X en Python pur, pour une preuve de 21,8\,Mo, tandis que le portage Rust du
+même moteur qui accompagne cet article prouve en 0,33\,s et vérifie en 0,18\,s sur un c\oe
+ur, quinze fois plus vite que CPython mesuré sur cette même machine. Nous analysons la
+trajectoire vers des preuves sous les 200\,Ko et une vérification en dizaines de
+millisecondes avec des moteurs de preuve de production.
+\end{abstract}
+
+\section{Introduction}
+
+Les obligations de vérification d'âge en ligne se multiplient, pour les réseaux sociaux,
+les magasins d'applications et un nombre croissant de services soumis à un contrôle d'âge,
+et chaque mécanisme de conformité largement déployé impose un choix fatal : soit le site
+apprend qui vous êtes (envoi de documents, scan du visage), soit un tiers apprend où vous
+allez (services de vérification centralisés, identité fédérée). Les deux créent des bases
+de données dont l'existence même constitue le préjudice : un registre permanent de qui
+visite quoi en ligne est une infrastructure de surveillance générale, à une fuite, une
+réquisition ou un changement de politique près d'être retournée contre n'importe quel
+citoyen ou groupe. Le résultat est prévisible : les adultes contournent les contrôles, les
+mineurs empruntent les mêmes voies de contournement, et l'objectif affiché de protection
+de l'enfance échoue tandis que le risque de surveillance demeure.
+
+Nous prenons pour contrainte de conception la version la plus forte possible de l'exigence
+de vie privée, posée comme règle inviolable : le système doit permettre à un site de
+confirmer que ce visiteur est un adulte certifié par le gouvernement, sans donner ni au
+site, ni au gouvernement, ni aux deux réunis, aucune capacité, jamais, de relier une
+visite à un citoyen. La garantie doit être mathématique et non institutionnelle : un
+citoyen qui suppose le gouvernement activement malveillant doit rester en sécurité en
+utilisant le système.
+
+Formellement, le système doit satisfaire :
+\begin{description}[leftmargin=2.6em,style=nextline]
+\item[R1 (Solidité).] Un site n'accepte que les visiteurs détenant une accréditation
+délivrée par le gouvernement à un adulte vérifié.
+\item[R2 (Aveuglement de l'émetteur).] Le gouvernement ne peut déterminer quel citoyen se
+trouve derrière un événement de vérification, ni même qu'un citoyen donné a utilisé le
+système après son inscription.
+\item[R3 (Aveuglement du vérifieur).] Le site apprend exactement un bit (majeur : oui)
+plus, en option, un pseudonyme stable uniquement au sein de ce site et d'une fenêtre
+temporelle bornée ; les pseudonymes entre sites sont non chaînables, même pour des sites
+en collusion.
+\item[R4 (Résistance à la collusion).] R2 et R3 tiennent même si le gouvernement et un
+ensemble quelconque de sites mettent toutes leurs données en commun.
+\item[R5 (Sécurité post-quantique).] Toutes les propriétés tiennent face à des adversaires
+quantiques.
+\end{description}
+
+Deux décisions structurelles font l'essentiel du travail. Premièrement, le gouvernement ne
+signe jamais aucune valeur propre à un citoyen : sa production cryptographique entière est
+une signature sur un unique accumulateur public, si bien qu'aucune signature ne peut
+jamais servir de marqueur de traçage. Deuxièmement, la vérification n'exige que des
+paramètres publics, elle est donc effectuée localement par le site ; le gouvernement n'a
+aucun point de terminaison de vérification, et des messages jamais envoyés ne peuvent être
+ni journalisés, ni corrélés, ni réquisitionnés.
+
+Nos contributions :
+\begin{enumerate}[leftmargin=2em]
+\item Un protocole fondé sur l'appartenance anonyme à un ensemble qui satisfait R1 à R5,
+dans lequel l'empreinte en ligne totale du gouvernement est une seule valeur publique
+signée, et où la vérification est un calcul local du site (Section~\ref{sec:protocol}).
+\item Des définitions de sécurité par jeux et des preuves complètes
+(Section~\ref{sec:security}), avec un décompte exact de ce que chaque partie et chaque
+coalition en collusion peut calculer, et un énoncé explicite des propriétés que le système
+ne fournit pas.
+\item Une implémentation de référence complète aux paramètres de production :
+Poseidon2-Goldilocks avec les constantes officielles de ses concepteurs, des empreintes de
+256 bits, un accumulateur de Merkle creux de capacité $2^{32}$, une solidité Fiat-Shamir
+de $2^{-128}$, une signature de racine ML-DSA-65, un format de portefeuille chiffré et un
+format binaire de transport ; un portage Rust natif du prouveur et du vérifieur,
+interopérable avec elle au niveau du format de transport ; ainsi que des mesures de
+performance et une suite de tests
+couvrant les attaques analysées en Section~\ref{sec:security} (Sections~\ref{sec:impl},
+\ref{sec:perf}).
+\end{enumerate}
+
+\section{Travaux connexes}
+
+\paragraph{Accréditations anonymes.} Les signatures aveugles de Chaum \cite{chaum} ont
+ouvert l'étude des accréditations que l'émetteur ne peut tracer. Brands \cite{brands} et
+Camenisch-Lysyanskaya \cite{cl} ont construit des systèmes complets d'accréditations
+anonymes ; les déploiements modernes (Idemix, BBS+ dans les profils de verifiable
+credentials \cite{w3cvc}) descendent des seconds. Toutes les instanciations pratiques
+reposent sur RSA, le logarithme discret ou les couplages et tombent face à l'algorithme de
+Shor \cite{shor} ; les accréditations anonymes et signatures aveugles post-quantiques
+restent des prototypes de recherche aux clés volumineuses, aux signatures volumineuses, à
+la sécurité concurrente restreinte ou aux hypothèses non standard \cite{aksy,delpino}.
+
+\paragraph{Pseudonymie par appartenance à un ensemble.} Notre construction descend
+architecturalement du signalement anonyme à la Semaphore \cite{semaphore} et de la
+conception des nullifiers de Zerocash \cite{zerocash} : l'identité est un secret dont
+l'engagement vit dans un ensemble de Merkle public, l'appartenance est prouvée à
+divulgation nulle, et des sorties de PRF déterministes fournissent des pseudonymes à
+portée limitée (nullifiers externes). Nous adaptons ce schéma à la vérification d'âge,
+remplaçons ses systèmes de preuve et ses hachages fondés sur le logarithme discret par des
+composants post-quantiques, et ajoutons une liaison de transcription côté vérifieur pour
+la résistance au rejeu sans aucun serveur de coordination.
+
+\paragraph{Jetons anonymes à débit limité.} Privacy Pass \cite{privacypass} et ses
+variantes à débit limité permettent de dépenser des jetons non chaînables ; ils traitent
+un problème différent (non-chaînabilité par requête avec un émetteur en ligne) et leurs
+fondations VOPRF sont pré-quantiques.
+
+\paragraph{Systèmes de vérification d'âge.} Les prestataires commerciaux (envoi de
+documents, estimation faciale) révèlent identité ou biométrie à une partie qu'il faut
+croire sur parole. Le modèle W3C Verifiable Credentials \cite{w3cvc} permet la divulgation
+sélective, mais ses profils de présentation non chaînable reposent sur BBS+ (couplages,
+donc pré-quantique), et ses flux de présentation impliquant l'émetteur laissent fuir des
+métadonnées d'usage. Les travaux d'attestation d'âge du portefeuille d'identité numérique
+européen partagent notre objectif pour R3 mais pas notre modèle de menace pour R2/R4 : ils
+supposent que l'émetteur s'abstient de corréler.
+
+\paragraph{Systèmes de preuve.} Les preuves à divulgation nulle de connaissance remontent
+à Goldwasser, Micali et Rackoff \cite{gmr}. ZKBoo \cite{zkboo} et ses successeurs
+(ZKB++/Picnic \cite{picnic}, KKW \cite{kkw}) construisent des arguments à divulgation
+nulle dans le paradigme MPC-in-the-head d'Ishai et al.\ \cite{ikos}, avec des primitives
+exclusivement symétriques : aucune mise en place de confiance, sécurité post-quantique
+plausible. Les STARK \cite{stark} atteignent le même profil de confiance avec des preuves
+succinctes au prix d'une complexité d'implémentation. Notre implémentation de référence
+utilise ZKBoo pour son auditabilité ; la Section~\ref{sec:deploypath} quantifie la
+trajectoire de déploiement STARK/VOLE-in-the-head.
+
+\paragraph{Standards post-quantiques.} Le NIST a standardisé ML-DSA (Dilithium) sous FIPS
+204 \cite{fips204,dilithium} et SHA-3 sous FIPS 202 \cite{fips202} ; Poseidon2
+\cite{poseidon2} est la permutation adaptée à l'arithmétisation de référence pour les
+systèmes à divulgation nulle. L'algorithme de Grover \cite{grover} divise par deux les
+niveaux de sécurité symétriques, ce que nos choix de paramètres prennent en compte.
+
+\section{Système et modèle de menace}
+\label{sec:model}
+
+\paragraph{Participants.} Une Autorité Gouvernementale (AG) qui vérifie l'âge par les
+mécanismes existants d'état civil ; des Citoyens exécutant un Portefeuille open source sur
+leurs propres appareils ; des Sites web qui doivent conditionner leur contenu à la
+majorité.
+
+\paragraph{Hypothèses de confiance.} (i) L'AG vérifie correctement l'âge à l'inscription
+et n'inscrit que des adultes ; (ii) les primitives cryptographiques satisfont leurs
+notions de sécurité standard (résistance aux collisions et sécurité PRF des fonctions
+fondées sur Poseidon2 de la Section~\ref{sec:prims}, EUF-CMA de ML-DSA-65, comportement
+d'oracle aléatoire de SHA3/SHAKE \cite{bellrog} pour les engagements et Fiat-Shamir) ;
+(iii) l'appareil du citoyen n'est pas compromis. Nous ne supposons explicitement
+\emph{pas} que l'AG s'abstient de corréler, de s'entendre ou de contraindre ; que les
+sites se comportent bien ; ni que les citoyens gardent leurs accréditations pour eux.
+
+\paragraph{Adversaires.} Une AG malveillante peut enregistrer tout ce qu'elle voit,
+s'entendre avec des sites et tenter des attaques par vue divisée (split-view) sur les
+données publiées. Des sites malveillants peuvent mettre leurs données en commun entre eux
+et avec l'AG et tenter un chaînage entre sites. Des citoyens malveillants peuvent tenter
+de forger une appartenance, de rejouer des jetons ou de prêter leurs accréditations. Tous
+les adversaires peuvent disposer de capacités quantiques.
+
+\paragraph{Objectifs de sécurité.}
+\textbf{G1} Infalsifiabilité : aucune coalition dépourvue d'un secret inscrit ne produit
+un jeton accepté, sauf avec probabilité négligeable.
+\textbf{G2} Anonymat : pour tout jeton accepté, aucune coalition de l'AG et de sites ne
+peut distinguer lequel des citoyens inscrits l'a produit avec un avantage non négligeable
+sur le tirage au hasard parmi tous les citoyens inscrits compatibles avec les données
+publiques.
+\textbf{G3} Non-chaînabilité entre sites : des jetons présentés à des sites différents (ou
+à des époques différentes) ne peuvent être reliés à un même citoyen.
+\textbf{G4} Résistance au rejeu : un jeton accepté une fois n'est plus accepté, ni sur le
+même site ni sur un autre.
+\textbf{G5} Tout ce qui précède face à des adversaires quantiques.
+
+\paragraph{Hors périmètre.} Les identifiants de la couche réseau (adresses IP) sont
+visibles des sites, comme pour toute requête HTTPS ; les citoyens qui exigent l'anonymat
+réseau composent le système avec Tor ou un VPN, avec lesquels il n'interfère pas,
+précisément parce qu'aucun point de terminaison gouvernemental n'est contacté. La
+compromission de l'appareil et la contrainte légale exercée sur le citoyen lui-même sont
+hors périmètre.
+
+\section{Le protocole}
+\label{sec:protocol}
+
+\subsection{Primitives et paramètres}
+\label{sec:prims}
+
+\paragraph{Corps.} Le premier de Goldilocks $p = 2^{64} - 2^{32} + 1$. Toutes les valeurs
+du protocole sont des vecteurs sur $\Fp$ ; les empreintes font 4 éléments (256 bits).
+
+\paragraph{Permutation.} Poseidon2 \cite{poseidon2} avec un état de largeur $t = 8$, une
+S-box $x^7$, 8 tours externes et 22 tours internes, avec les constantes de tour et la
+matrice interne publiées par ses concepteurs. Dans tout l'article, $P : \Fp^8 \to \Fp^8$
+désigne cette permutation et $\Trunc : \Fp^8 \to \Fp^4$ la projection d'un état sur ses
+quatre premiers éléments. De $P$ nous dérivons trois fonctions à séparation de domaine, au moyen de trois
+constantes de corps \emph{distinctes} $\mathit{tag}_{\mathrm{leaf}},
+\mathit{tag}_{\mathrm{prf}}, \mathit{tag}_{\mathrm{empty}} \in \Fp$ (c'est leur distinction
+deux à deux qui rend la séparation de domaine porteuse dans le
+Théorème~\ref{thm:unforge}) :
+\begin{align*}
+\LeafHash(s) &= \Trunc\bigl(P(s_0, s_1, s_2, s_3, \mathit{tag}_{\mathrm{leaf}}, 0, 0, 0)\bigr),\\
+\Compress(l, r) &= \Trunc\bigl(P(l \,\|\, r) + (l \,\|\, r)\bigr),\\
+\PRF(s, c) &= \Trunc\bigl(P(P(s_0, s_1, s_2, s_3, \mathit{tag}_{\mathrm{prf}}, 0, 0, 0) \boxplus c)\bigr),
+\end{align*}
+soit l'engagement d'inscription du secret $s \in \Fp^4$, la compression de Merkle 2 vers 1
+(le mode de compression avec réinjection (feed-forward) recommandé par les auteurs de
+Poseidon2) et la dérivation de pseudonyme. Ici $l \,\|\, r \in \Fp^8$ note la
+concaténation et $x \boxplus c \coloneqq (x_0 + c_0, \ldots, x_3 + c_3, x_4, \ldots, x_7)$
+ajoute le contexte $c$ de 4
+éléments dans le débit. Les contextes sont $c = \CtxHash(\mathrm{domaine},
+\mathrm{\acute{e}poque})$, 4 éléments dérivés par SHAKE256 avec échantillonnage par rejet
+; les déploiements multi-seuils incorporent le seuil d'âge dans la chaîne de domaine
+hachée (Section~\ref{sec:thresholds}).
+Sous les analyses standard des modes éponge et compression, ces fonctions offrent 128 bits
+de résistance aux collisions et 128 bits de résistance post-quantique à la préimage
+(capacité et empreinte font 256 bits ; Grover \cite{grover} divise l'exposant par deux).
+
+\paragraph{Accumulateur.} Un arbre de Merkle incrémental creux \cite{merkle} de profondeur
+$d = 32$ (capacité $2^{32} \approx 4{,}29$ milliards, suffisante pour toute population
+nationale ou fédérée) avec des feuilles vides toutes égales $E =
+\Trunc(P(0,0,0,0,\mathit{tag}_{\mathrm{empty}},0,0,0))$ et des empreintes de sous-arbres
+vides mises en cache, de sorte que l'insertion et le calcul de chemin coûtent $O(d)$ quel
+que soit le remplissage.
+
+\paragraph{Argument à divulgation nulle.} ZKBoo \cite{zkboo}, un système d'argument dans
+le paradigme MPC-in-the-head \cite{ikos} réalisant les preuves à divulgation nulle
+\cite{gmr}, sur le circuit arithmétique de la Section~\ref{sec:issuance}, avec la
+décomposition additive $(2,3)$ sur $\Fp$, des rubans (tapes) de partie développés depuis
+des graines de 256 bits par SHAKE256 en mode compteur, des engagements de vue SHA3-256 et
+des défis Fiat-Shamir dérivés par SHA3-256 sur la transcription complète, modélisée comme
+un oracle aléatoire \cite{bellrog}. Chaque répétition a une erreur de solidité de $2/3$ ;
+nous utilisons $\tau = 219$ répétitions, soit une erreur $(2/3)^{219} < 2^{-128}$. Les
+parts d'entrée de deux parties sont dérivées des rubans (l'optimisation ZKB++
+\cite{picnic}) ; les parts de la troisième partie et les sorties de multiplication de la
+vue voisine sont les seules données transmises par porte.
+
+\paragraph{Authentification de la racine.} ML-DSA-65 (FIPS 204 \cite{fips204}), catégorie
+de sécurité NIST 3, signe chaque lot de racine publié.
+
+\paragraph{Stockage du portefeuille.} Le secret est chiffré au repos avec AES-256-GCM sous
+une clé dérivée par scrypt ($N = 2^{15}$, $r = 8$, $p = 1$).
+
+\subsection{Inscription}
+
+Le portefeuille tire $s \leftarrow \Fp^4$ uniformément (256 bits d'entropie locale qui ne
+quittent jamais l'appareil) et calcule $\mathit{leaf} = \LeafHash(s)$. Le citoyen
+s'authentifie auprès de l'AG par le mécanisme d'identité civile existant de sa juridiction
+(en personne ou par eID) et ne soumet que $\mathit{leaf}$. L'AG vérifie que le citoyen est
+un adulte non déjà inscrit, ajoute $\mathit{leaf}$ à l'arbre à l'indice libre suivant et
+enregistre $(\mathrm{id\_citoyen}, \mathrm{indice})$. La génération de clé est entièrement
+locale : produire $s$ et $\mathit{leaf}$ n'exige aucune connexion réseau, si bien qu'une
+application portefeuille peut créer son accréditation complètement hors ligne (même sur un
+appareil isolé du réseau) et ne divulguer l'engagement qu'au moment de l'inscription ;
+rien dans la clé ne dépend jamais d'un serveur.
+
+L'AG a le droit de retenir cette correspondance pour toujours. C'est sans danger :
+$\mathit{leaf}$ et l'indice n'apparaissent dans aucun message ultérieur que l'AG pourrait
+observer. L'anonymat ne repose pas sur l'oubli de l'AG ; il repose sur le fait que l'AG ne
+voit jamais rien d'autre.
+
+\subsection{Publication de la racine}
+\label{sec:rootpub}
+
+Après chaque lot d'inscriptions ou de révocations, l'AG publie un lot de racine (root
+bundle)
+\[
+B = \bigl(\mathit{racine}, \mathit{taille}, \mathit{emis}, d,\
+\mathrm{Sig}_{\text{ML-DSA-65}}(\ell \,\|\, \mathit{racine} \,\|\, \mathit{taille} \,\|\,
+\mathit{emis} \,\|\, d)\bigr),
+\]
+où $\mathit{taille}$ est le nombre de feuilles allouées à ce jour, $\mathit{emis}$
+l'horodatage de publication, et $\ell$ une étiquette de version fixe (étendue par le seuil d'âge dans le
+déploiement multi-seuils de la Section~\ref{sec:thresholds}), publié avec la séquence
+complète des feuilles, l'arbre étant une donnée publique. Les
+lots sont distribués à la manière d'un journal de transparence : miroirs, diffusion et
+audit en ajout seul, de sorte que l'AG ne peut servir des racines différentes à des
+utilisateurs différents (une attaque par vue divisée lui permettrait sinon de donner à un
+citoyen un arbre personnalisé et de reconnaître les preuves qui en résultent ; la
+diffusion réduit cela à une attaque détectable en comparant deux observations de lots).
+Les portefeuilles synchronisent l'arbre en bloc, ou par récupération privée d'information,
+de sorte qu'obtenir son chemin ne révèle rien sur la feuille qui est la sienne ; les sites
+n'ont besoin que du lot.
+
+\subsection{Émission du jeton}
+\label{sec:issuance}
+
+Pour visiter le domaine $D$ à l'époque $e = \lfloor \mathrm{maintenant} / 30\
+\mathrm{jours} \rfloor$, le portefeuille obtient du site un nonce frais $n$ de 128 bits,
+calcule $c = \CtxHash(D, e)$, le pseudonyme $k = \PRF(s, c)$, le chemin de Merkle $(b_0,
+\sigma_0, \ldots, b_{d-1}, \sigma_{d-1})$ de sa feuille, où $b_i \in \{0,1\}$ est le
+$i$-ième bit de l'indice de la feuille et $\sigma_i \in \Fp^4$ l'empreinte frère au niveau
+$i$, et une preuve $\pi$ de l'énoncé
+\begin{align*}
+S(\mathit{racine}, k, c):\quad \exists\, s, (b_i, \sigma_i)_{i<d}:\quad
+& b_i \in \{0,1\},\\
+& \MerkleFold\bigl(\LeafHash(s), (b_i, \sigma_i)_{i<d}\bigr) = \mathit{racine},\quad
+\PRF(s, c) = k.
+\end{align*}
+Ici, $\MerkleFold$ est le recalcul itéré de racine défini par $h_0 = x$ et, pour $0 \le i
+< d$, $h_{i+1} = \Compress(h_i, \sigma_i)$ si $b_i = 0$ et $h_{i+1} = \Compress(\sigma_i,
+h_i)$ si $b_i = 1$, avec $\MerkleFold\bigl(x, (b_i, \sigma_i)_{i<d}\bigr) = h_d$. L'énoncé
+est réalisé comme circuit arithmétique : une permutation $\LeafHash$ ; par niveau, un
+échange conditionnel à 1 multiplication par élément d'empreinte, une contrainte de
+booléanité $b_i^2 - b_i = 0$ exposée comme sortie publique nulle, et une permutation
+$\Compress$ ; puis deux permutations pour la PRF. La taille du circuit est $344(d+3) + 5d$
+portes de multiplication (12\,200 pour $d = 32$). La transcription Fiat-Shamir hache, en
+plus de tous les engagements et parts de sortie, la chaîne de contexte
+\[
+\mathit{ctx} = \text{``avsm-token/1''} \,\|\, D \,\|\, e \,\|\, \mathit{racine} \,\|\, k
+\,\|\, n,
+\]
+liant la preuve au domaine, à l'époque, à la racine, au pseudonyme revendiqué et au nonce
+du site, les champs consécutifs étant joints par un octet séparateur réservé fixe (l'octet
+\texttt{|}, absent de tout nom d'hôte). Notons $\Enc(D, e, \mathit{racine}, k, n)$ cette
+chaîne d'octets ; l'argument de rejeu de la Section~\ref{sec:security} en exige une
+propriété syntaxique.
+
+\begin{lemma}[Encodage du contexte]
+\label{lem:enc}
+Si le champ de domaine ne contient aucune occurrence de l'octet séparateur, alors $\Enc$
+est injective.
+\end{lemma}
+
+\begin{proof}
+Tous les champs qui suivent le domaine ont une largeur fixe : 8 octets pour $e$, 32 pour
+$\mathit{racine}$ et 32 pour $k$, et $n$ court jusqu'à la fin de la chaîne. Un champ de
+domaine sans séparateur est donc délimité par le premier séparateur, et les champs
+restants se lisent à des décalages fixes : la chaîne d'octets détermine le tuple.
+\end{proof}
+
+\noindent
+Les noms d'hôte ne contiennent pas l'octet séparateur, mais c'est une propriété de
+l'entrée de l'appelant et non du protocole : le portefeuille comme le vérifieur rejettent
+donc un domaine qui en contiendrait un avant de hacher quoi que ce soit. Le jeton est $(k,
+e, D, \pi)$.
+
+\subsection{Vérification (hors ligne)}
+\label{sec:verification}
+
+Le site vérifie que $n$ est un nonce qu'il a émis, non expiré (TTL de 600\,s) et non
+consommé ; que $D$ le désigne lui-même et que $|e - e_{\mathrm{now}}| \le 1$, où
+$e_{\mathrm{now}}$ est l'époque de sa propre horloge ; recalcule $c$ et les sorties
+publiques attendues $(k, \mathit{racine}, 0^d)$, où $0^d$ désigne le vecteur des $d$ zéros
+que les contraintes de booléanité doivent produire, avec la racine de son
+dernier lot vérifié ; puis exécute le vérifieur de preuve : pour chaque répétition,
+dériver le défi depuis la transcription, redévelopper les deux graines ouvertes,
+recalculer la vue entière de la première partie ouverte et l'évaluation des fils de la
+seconde depuis ses sorties de multiplication engagées, et contrôler les deux engagements,
+les parts de sortie des deux parties et la reconstruction à trois parts de chaque sortie
+publique. En cas de succès, il marque $n$ consommé et peut associer $k$ à une session ou à
+un compte. Aucun message ne quitte le site.
+
+\subsection{Révocation et époques}
+
+La révocation (portefeuille volé, inscription erronée, décès) est une remise de la feuille
+à $E$ et un nouveau lot ; le secret révoqué ne satisfait plus $S$ contre la nouvelle
+racine, et les preuves de tous les autres citoyens continuent de se vérifier une fois leur
+portefeuille resynchronisé. Les époques bornent la durée de vie des pseudonymes : la clé
+$k$ d'un site tourne tous les 30 jours, ce qui plafonne le profilage à long terme sur un
+même site, tandis qu'au sein d'une époque le $k$ stable donne aux sites un identifiant de
+visiteur récurrent sans cookies ni comptes. Les sites acceptent les jetons dont l'époque
+s'écarte d'au plus un de leur époque courante (la précédente ou la suivante, conformément
+au contrôle $|e - e_{\mathrm{now}}| \le 1$ de la Section~\ref{sec:verification}), tolérant
+les décalages d'horloge et les effets de bord au changement d'époque.
+
+\subsection{Seuils d'âge multiples}
+\label{sec:thresholds}
+
+Rien dans la construction n'est propre à la majorité ; la majorité n'est que le prédicat
+que l'AG vérifie à l'inscription. Une juridiction dont les lois conditionnent différents
+services à différents âges (13, 15, 16, 18) exploite un accumulateur par seuil : l'AG
+maintient des arbres parallèles $\tree_{13}, \tree_{15}, \ldots$, un par seuil $a$, chacun avec
+sa propre racine $\mathit{racine}_a$, insère l'engagement d'un citoyen dans chaque arbre
+dont il satisfait le seuil, et publie un lot signé par arbre avec $a$ lié sous la
+signature, de sorte qu'une racine ne peut être présentée comme certifiant un autre seuil
+que celui pour lequel elle a été publiée. Le même secret de
+portefeuille et le même engagement servent tous les arbres, mais les arbres se remplissent
+indépendamment, si bien que le portefeuille conserve un indice de feuille par arbre ; les
+insertions des citoyens qui
+franchissent un seuil sont regroupées avec la cadence normale de publication des lots ; la
+révocation efface la feuille dans chaque arbre. Tous les théorèmes de sécurité s'appliquent
+inchangés arbre par arbre, et l'ensemble d'anonymat d'une preuve contre $\tree_a$ est
+l'ensemble des citoyens inscrits satisfaisant le seuil $a$, un ensemble à l'échelle de la
+population pour chaque $a$.
+
+\paragraph{L'attaque par encadrement.} Un site dont l'obligation porte sur le seuil $a$
+apprend un bit, âge $\ge a$. Rien n'oblige un site hostile à s'arrêter là. Un site qui
+admet ses visiteurs à 13 ans pourrait tester chacun d'eux, en plus, contre le seuil de 18
+ans : les adultes passent, un jeune de quatorze ans échoue, et le site a trié en tranches
+d'âge les utilisateurs mêmes qu'il admet. Une conception multi-seuils doit fermer ce
+canal, et le fermer par les mathématiques plutôt que par des conditions d'utilisation.
+Trois mécanismes s'en chargent. Les deux premiers sont cryptographiques ; le troisième
+rend visible, à la personne qu'elle vise, la seule demande qu'ils ne peuvent pas
+éliminer.
+
+\begin{enumerate}[leftmargin=2em]
+\item \emph{Liaison du seuil.} Le seuil est soudé à la preuve elle-même. Le contexte
+devient $c_a = \CtxHash(D, e, a)$ (réalisé en injectant $a$ dans la chaîne de contexte
+hachée de la Section~\ref{sec:issuance}), le pseudonyme devient $k = \PRF(s, c_a)$, et la
+transcription de Fiat-Shamir lie $(D, e, \mathit{racine}_a, k, n)$ ainsi que $a$. Une
+preuve est donc une preuve \emph{pour un seuil} : la retester contre la racine de tout
+autre seuil échoue, pour chaque visiteur, qu'il appartienne ou non à l'autre arbre
+(Proposition~\ref{prop:isolation}, Section~\ref{sec:isolation}). Un retest qui échoue
+pour tout le monde ne révèle rien sur personne.
+\item \emph{Usage unique.} La transcription lie le nonce frais du site et le vérifieur le
+consomme (Théorème~\ref{thm:replay}), si bien qu'un jeton reçu ne peut être rejoué contre
+quoi que ce soit, y compris une autre racine. Le sondage ne peut donc pas recycler du
+matériel que le site détient déjà ; il lui faudrait demander au portefeuille une preuve
+entièrement nouvelle.
+\item \emph{Transparence côté portefeuille.} Cette demande restante s'adresse au
+portefeuille, et le portefeuille est l'agent du citoyen, pas celui du site. Le
+portefeuille affiche quel seuil un site lui demande de prouver, retient le premier seuil
+que chaque domaine a déclaré, et traite tout changement, ou toute demande de prouver un
+second seuil, comme suspect : il s'interrompt avec un avertissement explicite, refuse par
+défaut, et ne continue que sur confirmation délibérée de l'utilisateur (un déploiement
+peut réserver ce contournement aux réglages avancés). La logique d'avertissement
+s'exécute avant tout calcul dépendant de l'appartenance, elle se déclenche donc à
+l'identique chez tous les portefeuilles, quel que soit l'âge du détenteur ; et un
+portefeuille ne détenant aucune feuille dans l'accumulateur demandé refuse localement au
+lieu d'émettre une preuve qui échouerait, si bien que le site ne peut distinguer ce cas
+d'un refus. Le site ne
+peut pas lire un âge dans la réaction du portefeuille, seulement dans une réponse que
+l'utilisateur choisit sciemment de donner, et la demande de sondage elle-même devient une
+preuve d'abus visible par l'utilisateur et consignable.
+\end{enumerate}
+
+Le seuil d'un domaine devient ainsi une partie de son identité publique. Un site reste
+libre de déclarer 18 pour un service nominalement 13+, mais il refoule alors les mineurs
+uniformément et visiblement, et ne reçoit toujours qu'un bit. La cascade qui semble
+naturelle (tenter $\tree_{18}$, se rabattre sur $\tree_{16}$, conclure $16 \le \mathrm{\hat{a}ge}
+< 18$) est sans objet pour les sites honnêtes, puisqu'un visiteur prouve directement
+contre l'unique seuil déclaré du site, et constitue exactement le motif de double demande
+que le mécanisme 3 signale. Comme les pseudonymes dérivent du contexte incluant le seuil,
+les jetons de seuils différents sur un même domaine sont de surcroît inchaînables (le
+Théorème~\ref{thm:unlink} s'applique, puisque $c_a \ne c_b$ pour $a \ne b$), défense en
+profondeur si un utilisateur venait un jour à confirmer un second seuil. L'interdiction
+légale de la Section~\ref{sec:deploy}, point (iii), demeure comme filet de
+responsabilité, mais le mécanisme n'en dépend pas. L'implémentation de référence applique
+tout cela : les lots portent le seuil sous la signature de l'AG, le haché de contexte
+incorpore le seuil, les portefeuilles maintiennent un registre d'épinglages persistant et
+lèvent un avertissement explicite, indépendant de l'âge, à chaque changement, et un site
+configuré avec un seuil requis refuse les lots de tout autre seuil.
+
+\section{Analyse de sécurité}
+\label{sec:security}
+
+Dans toute cette section, les fonctions de hachage sont les constructions Poseidon2 de la
+Section~\ref{sec:prims}, la permutation sous-jacente est modélisée comme une permutation
+aléatoire publique, SHA3/SHAKE sont modélisés comme des oracles aléatoires \cite{bellrog},
+$\negl$ désigne une fonction négligeable du paramètre de sécurité, $q$ borne les requêtes
+d'oracle de l'adversaire, $\tau$ est le nombre de répétitions, et $\adv$ est un
+adversaire polynomial probabiliste (ou quantique, Section~\ref{sec:pq}). L'\emph{arbre
+publié} désigne l'arbre binaire complet de profondeur $d$ déterminé par la suite de
+feuilles publiée, toute position inoccupée portant la feuille vide $E$ et tout sous-arbre
+inoccupé son empreinte mise en cache ; chaque position de chaque niveau est ainsi bien
+définie.
+
+\subsection{Infalsifiabilité (G1, R1)}
+
+\begin{theorem}
+\label{thm:unforge}
+Supposons les engagements de vue liants (SHA3-256 comme oracle aléatoire), $\LeafHash$ et
+$\Compress$ résistants aux collisions et à la préimage, les défis dérivés par
+Fiat-Shamir dans le modèle de l'oracle aléatoire, et la racine contre laquelle le site
+vérifie issue d'un lot dont il a contrôlé la signature ML-DSA-65 (de sorte que
+l'``arbre publié'' soit bien défini ; sans l'EUF-CMA du schéma de signature, un lot
+falsifié laisserait l'adversaire choisir la racine). Si une coalition quelconque de citoyens,
+de sites et de détenteurs de l'information publique de l'AG amène un site honnête à
+accepter un jeton, alors sauf avec probabilité au plus $q(2/3)^\tau + O(q^2)\,2^{-256}$ il
+existe un témoin extractible $(s, \mathrm{chemin})$ tel que $\LeafHash(s)$ soit une
+feuille de l'arbre publié ; et si aucun membre de la coalition n'a été inscrit avec cette
+feuille, l'extraction fournit de surcroît une préimage ou une collision des fonctions de
+hachage.
+\end{theorem}
+
+\begin{proof}
+Fixons un jeton accepté $(k, e, D, \pi)$, soit $\mathit{racine}$ la valeur contre
+laquelle le site a vérifié, et soit $c = \CtxHash(D, e)$ le contexte qu'il a recalculé.
+
+\emph{Étape 1 (les engagements lient les vues).} Chaque répétition porte trois engagements
+SHA3-256 sur (graine, vue). Produire deux ouvertures distinctes d'un même engagement exige
+une collision dans l'oracle aléatoire, donc sur l'ensemble des $q$ requêtes de
+$\adv$ cela survient avec probabilité au plus $q^2 2^{-256}$. Hors de cet
+événement, à l'instant où une transcription est soumise pour la première fois à l'oracle
+de défi, chaque répétition de cette transcription est liée à un unique triplet de vues :
+deux d'entre elles entièrement déterminées par leurs graines, la troisième par sa graine
+jointe à ses parts d'entrée et sorties de multiplication engagées.
+
+\emph{Étape 2 (un énoncé faux corrompt au moins une paire par répétition).} Considérons
+une répétition, son triplet de vues lié, et les trois vecteurs de parts de sortie inclus
+dans la transcription. Les indices de partie parcourent $\{0,1,2\}$ et sont lus modulo 3
+dans tout ce qui suit. Disons que la paire $(i, i{+}1)$ est \emph{cohérente} si le
+recalcul déterministe du vérifieur pour le défi $i$ réussit : la vue de la partie $i$ se
+redérive exactement de sa graine (et de ses entrées engagées le cas échéant), chaque porte
+de multiplication de la partie $i$ est cohérente avec les rubans des parties $i$ et
+$i{+}1$ et les sorties de porte engagées de la partie $i{+}1$, et les sorties de circuit
+des deux parties égalent les parts de sortie de la transcription. Si les trois paires sont
+cohérentes, les trois vecteurs de parts d'entrée définissent conjointement un témoin $w$
+(la somme coordonnée par coordonnée des parts), et par récurrence sur les portes du
+circuit, les trois parts de chaque fil somment à l'évaluation native de ce fil sur $w$ ;
+comme le vérifieur contrôle aussi que les parts de sortie somment à $(k, \mathit{racine},
+0^d)$, $w$ satisfait $S(\mathit{racine}, k, c)$. Par contraposée : si les vues liées ne
+contiennent aucun témoin de $S$, au moins une des trois paires est incohérente, et le
+vérifieur n'accepte la répétition que si le défi tombe sur l'une des au plus deux paires
+cohérentes, probabilité au plus $2/3$.
+
+\emph{Étape 3 (Fiat-Shamir).} Les défis d'une transcription $T$ sont la sortie de l'oracle
+aléatoire sur $T$. Pour toute transcription $T$ liée comme à l'étape 1 à des vues sans
+témoin, la probabilité que son vecteur de défis évite chaque paire incohérente sur les
+$\tau$ répétitions est au plus $(2/3)^\tau$. Une borne d'union sur les $q$ requêtes de
+l'adversaire borne sa probabilité totale de succès par $q\,(2/3)^\tau$, soit moins de
+$q\,2^{-128}$ pour $\tau = 219$. L'union porte sur les transcriptions et non sur les
+répétitions parce que le vérifieur dérive les $\tau$ défis du haché unique d'une seule
+transcription et rejette si une seule répétition échoue : l'adversaire obtient un tirage
+du vecteur de défis entier par requête, non un tirage par répétition.
+
+\emph{Étape 4 (extraction et réduction à la sécurité des hachés).} Dans le cas restant,
+les vues liées d'une transcription acceptée contiennent un témoin $(s, (b_i,
+\sigma_i)_{i<d})$ de $S$. Les sorties de booléanité forcent chaque $b_i \in \{0,1\}$
+exactement, donc $\MerkleFold$ effectue un authentique recalcul de racine le long du
+chemin sélectionné par les bits. Comparons ce recalcul à l'arbre publié, niveau par niveau
+depuis la racine : soit chaque n\oe ud produit égale le n\oe ud publié à la position
+correspondante, auquel cas $\LeafHash(s)$ égale la feuille publiée à l'indice $\sum_i b_i
+2^i$ ; soit il existe un niveau le plus haut où la paire d'enfants recalculée diffère des
+enfants publiés alors que le parent concorde, ce qui exhibe une collision de $\Compress$.
+Dans le premier cas, si la position indexée porte la feuille vide $E$, alors $(s,
+\mathit{tag}_{\mathrm{leaf}}, 0, 0, 0)$ et $(0,0,0,0,\mathit{tag}_{\mathrm{empty}},0,0,0)$
+sont des entrées distinctes de la permutation (elles diffèrent dans l'emplacement
+d'étiquette, puisque $\mathit{tag}_{\mathrm{leaf}} \ne \mathit{tag}_{\mathrm{empty}}$, quel
+que soit $s$) aux sorties tronquées égales, une collision
+entre les instances à séparation de domaine ; si la position porte l'engagement d'un
+citoyen honnête, $s$ en est une préimage. Chacun de ces événements contredit la sécurité
+supposée des hachés, sauf avec probabilité négligeable ; un jeton accepté implique donc la
+connaissance d'un secret inscrit, dans les bornes annoncées.
+\end{proof}
+
+\subsection{Anonymat et résistance à la collusion (G2, R2, R4)}
+
+\begin{definitionx}[Jeu d'anonymat]
+L'adversaire contrôle l'AG et tous les sites, mène l'inscription de citoyens de son choix
+plus deux portefeuilles honnêtes $W_0, W_1$ qu'il inscrit (apprenant leurs feuilles et
+indices, mais pas leurs secrets). Il interroge ensuite au plus $q$ fois un oracle de
+jetons : une requête $(j, D, e, n)$ avec $j \in \{0,1\}$ renvoie le jeton que $W_j$
+produirait pour $(D, e, n)$ contre la racine publiée courante. Au moment du défi, $\adv$
+choisit $(D^*, e^*)$ pour lesquels il n'a fait aucune requête de jeton, pour l'un ou
+l'autre portefeuille honnête, ainsi qu'un nonce $n^*$ de son choix ; le challenger tire une pièce équilibrée $\beta \in \{0,1\}$, et
+$W_\beta$ produit un jeton pour $(D^*, e^*, n^*)$ que $\adv$ reçoit. $\adv$
+sort une supposition $\beta'$. Le système est anonyme si $|\Pr[\beta' = \beta] - 1/2| \le
+\negl$.
+\end{definitionx}
+
+\begin{theorem}
+\label{thm:anon}
+Dans le modèle de l'oracle aléatoire et de la permutation aléatoire, le protocole est
+anonyme au sens du jeu ci-dessus, avec un avantage adversarial au plus $O(q)\,2^{-253}$.
+\end{theorem}
+
+\begin{proof}
+Nous procédons par argument hybride sur le jeton de défi.
+
+L'hybride $H_0$ est le jeu réel.
+
+L'hybride $H_1$ remplace la preuve $\pi$ par une preuve simulée. Le simulateur tire
+d'abord le vecteur de défis ; puis, pour chaque répétition, il construit les deux vues à
+ouvrir exactement comme un prouveur honnête (rubans uniformes développés depuis des
+graines fraîches, parts d'entrée dérivées des rubans ou explicites selon les indices de
+partie), complète leurs valeurs porte par porte pour que tous les contrôles de paire et
+les deux vecteurs de parts de sortie soient cohérents avec les sorties publiques, engage
+honnêtement ces deux vues, engage une chaîne uniformément aléatoire à la place de la
+troisième vue, et programme l'oracle aléatoire pour que la transcription résultante
+corresponde aux défis pré-tirés. Les données ouvertes dans $H_1$ sont distribuées
+identiquement à $H_0$ : dans les deux mondes, les deux vues ouvertes consistent en valeurs
+de ruban uniformes et indépendantes et en parts dont la distribution jointe est fixée par
+les mêmes contraintes de cohérence, car deux quelconques des trois parts additives de
+chaque fil sont uniformes et indépendantes du témoin. Deux événements d'échec séparent les
+hybrides : l'adversaire interroge l'oracle aléatoire sur la préimage de l'engagement non
+ouvert, qui contient une graine fraîche de 256 bits qu'il ne voit jamais, probabilité au
+plus $q\,2^{-256}$ ; ou la transcription à programmer a déjà été interrogée, ce qui exige
+de deviner une des graines fraîches contenues dans les engagements, de nouveau au plus
+$q\,2^{-256}$.
+
+L'hybride $H_2$ remplace $k = \PRF(s_\beta, c^*)$, où $c^* = \CtxHash(D^*, e^*)$ et
+$s_\beta$ est le secret de $W_\beta$, par une empreinte uniforme. Toutes les preuves étant
+simulées après $H_1$, la vue entière que l'adversaire a de $s_\beta$ est une liste
+d'empreintes : $\mathit{feuille}_\beta = \Trunc\bigl(P(s_{\beta,0}, \ldots, s_{\beta,3},
+\mathit{tag}_{\mathrm{leaf}}, 0, 0, 0)\bigr)$ issue de l'inscription, les pseudonymes
+$\PRF(s_\beta, c_1), \ldots, \PRF(s_\beta, c_m)$ renvoyés par ses $m \le q$ requêtes de
+jetons, et le défi $k$. Notons $y = P(s_{\beta,0}, \ldots, s_{\beta,3},
+\mathit{tag}_{\mathrm{prf}}, 0, 0, 0)$ l'image interne commune.
+
+Deux observations donnent l'hybride. D'abord, $s_\beta$ est uniforme sur $\Fp^4$
+(min-entropie supérieure à $255$ bits), donc l'état de feuille et l'état interne du PRF
+sont deux points distincts de $P$, différant à l'emplacement d'étiquette ; $P$ étant une
+permutation aléatoire publique, leurs images sont indépendantes et uniformes tant que
+$\adv$ n'interroge pas $P$ ou $P^{-1}$ en un point dont la moitié de débit vaut $s_\beta$,
+ce que chacune de ses $q$ requêtes fait avec probabilité au plus $2^{-255}$. Ensuite, le
+jeu interdit toute requête de jeton en $(D^*, e^*)$, donc $c_i \ne c^*$ pour tout $i$ sauf
+collision de $\CtxHash$ sur des entrées distinctes, probabilité au plus $q\,2^{-255}$ ;
+les appels externes de la permutation sont alors évalués aux $m+1$ points distincts $y
+\boxplus c_1, \ldots, y \boxplus c_m, y \boxplus c^*$, dont les images sont conjointement
+uniformes et indépendantes tant que $\adv$ n'interroge pas $P$ en l'un d'eux, et $y$ est
+lui-même non interrogé et uniforme. En conditionnant sur l'absence de ces événements, $k$
+est uniforme et indépendant de tout le reste de ce que détient $\adv$, exactement comme
+dans $H_2$. Donc $H_1$ et $H_2$ diffèrent d'au plus $O(q)\,2^{-253}$. Ce sont les $m$
+pseudonymes antérieurs qui rendent cette étape nécessaire : ce sont les seuls autres
+endroits où $s_\beta$ intervient, et ils sont traités plutôt qu'exclus.
+
+Dans $H_2$ le jeton de défi est (un $k$ uniforme, $e^*$, $D^*$, un $\pi$ simulé) et
+constitue un échantillon d'une distribution qui ne dépend pas de $\beta$ : l'avantage y
+est donc nul. La somme des distances entre hybrides démontre le théorème.
+\end{proof}
+
+\begin{corollary}[Ce que détient une coalition en collusion totale]
+La coalition de l'AG et de tous les sites possède : le registre (citoyen $\to$ feuille),
+l'arbre public, et par site un ensemble de pseudonymes $k$ avec leurs métadonnées de
+session. Le Théorème~\ref{thm:anon} compare deux portefeuilles ; un hybride standard sur
+la population inscrite, remplaçant les pseudonymes d'un citoyen à la fois par des
+empreintes uniformes, l'étend en l'énoncé que la distribution jointe de tous les
+pseudonymes est calculatoirement indépendante du registre, pour un coût linéaire en le
+nombre de citoyens inscrits. Il n'y a de surcroît aucun trafic à corréler :
+le protocole ne définit aucun message du citoyen ou du site vers l'AG après l'inscription,
+si bien que les attaques par synchronisation et par intersection dans le style de
+l'analyse des réseaux de mixage n'ont aucune observation côté gouvernement à exploiter. Le
+signal résiduel est celui, côté site, que possède tout service web (adresse IP, horaires),
+hors périmètre par la Section~\ref{sec:model} et inchangé par ce système.
+\end{corollary}
+
+\subsection{Non-chaînabilité entre sites et entre époques (G3, R3)}
+
+\begin{theorem}
+\label{thm:unlink}
+Soient $(D, e) \ne (D', e')$ deux couples domaine-époque distincts et considérons le jeu
+suivant. L'adversaire contrôle l'AG et tous les sites et inscrit deux portefeuilles
+honnêtes de secrets $s_0, s_1 \in \Fp^4$ ; le challenger tire $\beta \in \{0,1\}$ et rend
+le jeton de $s_0$ en $(D, e)$ accompagné du jeton de $s_\beta$ en $(D', e')$, c'est-à-dire
+les pseudonymes $k = \PRF(s_0, \CtxHash(D, e))$ et $k' = \PRF(s_\beta, \CtxHash(D', e'))$
+avec leurs preuves. Sous le modèle du Théorème~\ref{thm:anon}, aucun adversaire ne décide
+si les deux jetons proviennent d'un seul secret ($\beta = 0$) ou de deux ($\beta = 1$)
+avec un avantage supérieur à $O(q)\,2^{-253}$, où $q$ borne ses requêtes à l'oracle et à
+la permutation.
+\end{theorem}
+
+\begin{proof}
+Posons $c = \CtxHash(D, e)$ et $c' = \CtxHash(D', e')$. Comme $\CtxHash$ est SHAKE256 avec
+échantillonnage par rejet, modélisé en oracle aléatoire, ses sorties sur les deux entrées
+distinctes $(D, e) \ne (D', e')$ sont indépendantes et uniformes sur $\Fp^4$, donc $c \ne
+c'$ sauf avec probabilité $p^{-4} < 2^{-255}$. Il s'agit d'une collision entre deux
+entrées fixées : la borne ne dépend pas du nombre de requêtes de l'adversaire.
+Appliquons la séquence
+hybride du Théorème~\ref{thm:anon} aux deux jetons simultanément : l'étape de simulation
+est par jeton et inchangée ; l'étape de remplacement substitue aux deux pseudonymes des
+valeurs uniformes, ce que justifie le même argument de permutation aléatoire, puisque les
+deux appels externes de PRF évaluent $P$ en des points distincts (leurs moitiés de débit
+diffèrent par $c$ contre $c'$) et sont donc conjointement uniformes et indépendants à
+moins que l'adversaire n'interroge $P$ en un point dont la moitié de débit vaut $s_0$ ou
+$s_1$, ce que chacune de ses $q$ requêtes fait avec probabilité au plus $2^{-255}$. Pour
+$\beta = 0$ les deux appels externes partagent une même image interne et pour $\beta = 1$
+ils en utilisent deux, mais dans les deux cas les points d'évaluation sont distincts :
+c'est pourquoi la distinction de cas n'affleure jamais dans la vue de l'adversaire. Dans
+l'hybride final,
+les deux jetons sont des échantillons uniformes indépendants, une distribution identique
+sous $\beta = 0$ et sous $\beta = 1$, donc l'avantage y est nul ; la somme des distances
+entre hybrides donne la borne annoncée. Au sein d'un même $(D, e)$, la chaînabilité de deux visites est
+intentionnelle ($k$ est déterministe) et annoncée comme la propriété de pseudonymie.
+\end{proof}
+
+\subsection{Résistance au rejeu (G4)}
+
+\begin{theorem}
+\label{thm:replay}
+Soit $(k, e, D, \pi)$ un jeton produit par un portefeuille honnête et accepté par le site
+$D$ avec le nonce $n$. Sauf avec probabilité au plus $(q^2 + 3\tau)\,2^{-256} +
+3^{-\tau}$, le jeton ne se vérifie sur aucun autre tuple $(D', e', \mathit{racine}', k',
+n') \ne (D, e, \mathit{racine}, k, n)$, et sur $(D, n)$ lui-même au plus une fois.
+\end{theorem}
+
+\begin{proof}
+Écrivons la preuve comme un corps de transcription $T$ (tous les engagements et parts de
+sortie) et des ouvertures $O$ pour le vecteur de défis $\chall \in \{0,1,2\}^\tau$, dérivé
+comme $\chall = \RO(\mathrm{prefix} \,\|\, \mathit{ctx} \,\|\, T)$, où $\RO$ est l'oracle
+aléatoire instanciant le haché de Fiat-Shamir (SHA3-256), $\mathrm{prefix}$ la chaîne fixe
+de séparation de domaine du protocole, et où $\mathit{ctx} = \Enc(D, e, \mathit{racine}, k, n)$ ; $\chall_i$ désigne la $i$-ième composante de $\chall$ et les indices de
+partie sont pris modulo 3. La génération honnête tire les trois graines de chaque
+répétition indépendamment et uniformément, donc au sein d'une répétition les trois graines
+sont distinctes deux à deux sauf avec probabilité au plus $3\,2^{-256}$, soit au plus
+$3\tau\,2^{-256}$ sur les $\tau$ répétitions. Un
+vérifieur pour un tuple différent dérive $\chall' = \RO(\mathrm{prefix} \,\|\, \mathit{ctx}'
+\,\|\, T)$. Les deux contextes encodent des tuples distincts, donc $\mathit{ctx}' \ne \mathit{ctx}$
+en tant que chaînes de bits par le Lemme~\ref{lem:enc}, et $\chall' = \chall$
+seulement si l'oracle aléatoire entre en collision sur des entrées distinctes, probabilité
+au plus $q^2 2^{-256}$ sur les requêtes de l'adversaire ; sinon $\chall'$ est uniforme sur
+l'espace de défis à $\tau$ composantes et indépendant de $\chall$. Les ouvertures $O$
+contiennent, pour chaque répétition $i$, les graines des parties $\chall_i$ et $\chall_i + 1$ et les
+sorties de multiplication de la partie $\chall_i + 1$. Si $\chall'_i \ne \chall_i$ pour une répétition,
+le vérifieur interprète les graines fournies comme celles des parties $\chall'_i$ et $\chall'_i + 1$
+et les contrôle contre les engagements à ces indices ; chaque engagement contient la
+graine fraîche de 256 bits de sa propre partie, et ces graines sont distinctes deux à
+deux, donc une graine engagée à un indice
+n'ouvre l'engagement d'un autre indice que par collision d'oracle aléatoire, déjà comptée.
+L'acceptation exige donc $\chall' = \chall$ exactement, un événement de probabilité $3^{-\tau}$,
+soit moins de $2^{-347}$ pour $\tau = 219$. La re-présentation sur $(D, n)$ lui-même est
+bloquée par l'état local de nonces consommés du vérifieur, qui n'exige aucune coordination
+avec quiconque ; et un nonce frais sur le même site change $\mathit{ctx}$, ce qui ramène
+au cas précédent.
+\end{proof}
+
+\paragraph{Remarque.} Un portefeuille qui s'écarte de l'aléa honnête (par exemple en
+donnant aux trois parties des graines identiques) peut fabriquer des jetons qui se
+vérifient sous plusieurs vecteurs de défis et deviennent donc rejouables par des tiers.
+Cela n'affaiblit que la liaison de ses propres jetons : cela n'accorde d'attestations de
+majorité qu'avec la coopération active du détenteur du portefeuille, exactement le cas du
+partage volontaire de la Section~\ref{sec:limits}.
+
+\subsection{Isolation des seuils (déploiements multi-seuils)}
+\label{sec:isolation}
+
+Cette sous-section prouve l'affirmation du mécanisme 1 de la
+Section~\ref{sec:thresholds} : un jeton n'est utilisable que contre le seuil exact pour
+lequel il a été produit, et le tester contre tout autre seuil produit un verdict qui ne
+porte aucune information sur le visiteur.
+
+\begin{proposition}[Isolation des seuils]
+\label{prop:isolation}
+Soient $a \ne b$ des seuils d'âge de racines publiées $\mathit{racine}_a$,
+$\mathit{racine}_b$, et soit $(k, e, D, \pi)$ un jeton produit par un portefeuille
+honnête pour le seuil $a$ au domaine $D$ et à l'époque $e$ avec le nonce de site $n$,
+c'est-à-dire une preuve de $S(\mathit{racine}_a, k, c_a)$ avec $c_a = \CtxHash(D, e, a)$,
+liée par transcription comme en Section~\ref{sec:thresholds}. Pour tout nonce $n'$, un
+vérifieur qui contrôle ce jeton contre le seuil $b$, c'est-à-dire contre
+$(\mathit{racine}_b, c_b = \CtxHash(D, e, b), n')$, accepte avec probabilité au plus
+$(q^2 + 3\tau)\,2^{-256} + 3^{-\tau}$, où $q$ borne les requêtes de l'adversaire à
+l'oracle aléatoire et $\tau$ est le nombre de répétitions (Section~\ref{sec:security}).
+La borne vaut uniformément sur tous les portefeuilles ; en particulier elle ne dépend pas
+de la présence de la feuille du portefeuille dans $\tree_b$.
+\end{proposition}
+
+\begin{proof}
+L'encodage du seuil dans le contexte de Fiat-Shamir est injectif. Les deux côtés dérivent
+le contexte de leur propre $(D, a)$ en formant la chaîne $D \,\|\, \texttt{\#} \,\|\, a$
+et en l'employant à la place du domaine nu, et \texttt{\#} n'apparaît dans aucun nom
+d'hôte, donc l'application $(D, a) \mapsto D \,\|\, \texttt{\#} \,\|\, a$ est injective et
+$a \ne b$ force des champs de domaine distincts. Ainsi la chaîne de contexte du prouveur
+$\mathit{ctx}_a$, qui encode $(D \,\|\, \texttt{\#} \,\|\, a,\, e,\, \mathit{racine}_a,\,
+k,\, n)$, et celle du vérifieur $b$, $\mathit{ctx}_b$, qui encode $(D \,\|\, \texttt{\#}
+\,\|\, b,\, e,\, \mathit{racine}_b,\, k,\, n')$, diffèrent en tant que chaînes de bits
+pour tout choix de $n'$ : elles diffèrent déjà dans le champ de domaine, que
+$\mathit{racine}_a$ et $\mathit{racine}_b$ coïncident ou non. Le Lemme~\ref{lem:enc} donne alors $\mathit{ctx}_a \ne \mathit{ctx}_b$, et le
+Théorème~\ref{thm:replay} s'applique mot pour mot en prenant comme tuple cible celui du
+vérifieur $b$, ce qui donne la borne annoncée. Sa démonstration n'utilise que la
+génération honnête de $\pi$ (graines uniformes indépendantes) et les propriétés de
+l'oracle aléatoire ; elle ne fait à aucun moment référence au témoin du portefeuille ni au
+contenu de $\tree_b$. Ainsi le jeton de tout portefeuille est rejeté par le vérifieur $b$
+avec probabilité au moins $1 - (q^2 + 3\tau)\,2^{-256} - 3^{-\tau}$ : le verdict suit la
+même distribution que le détenteur soit inscrit ou non dans $\tree_b$, et un test dont la
+distribution de sortie ne dépend pas du détenteur ne transmet rien sur le détenteur. C'est
+l'uniformité annoncée.
+\end{proof}
+
+\subsection{Sécurité post-quantique (G5, R5)}
+\label{sec:pq}
+
+Chaque propriété de sécurité ci-dessus se réduit à : la résistance à la préimage et la
+sécurité PRF des fonctions fondées sur Poseidon2 à capacité et empreintes de 256 bits, que
+Grover \cite{grover} ramène à 128 bits ; la résistance aux collisions de ces mêmes
+fonctions, qui mérite le décompte séparé donné ci-dessous ; le comportement d'oracle
+aléatoire de SHA3/SHAKE, où la solidité de la transformation de Fiat-Shamir face aux
+adversaires quantiques découle des analyses par mesure et reprogrammation des protocoles
+commit-and-open dans le modèle de l'oracle aléatoire quantique \cite{qromfs}, dont les
+pertes polynomiales en requêtes sont absorbées par notre marge de solidité classique de
+$2^{-128}$ ; et l'EUF-CMA de ML-DSA-65 sous Module-LWE et Module-SIS
+\cite{regev,dilithium}, catégorie NIST 3. Aucune hypothèse de logarithme discret, de
+factorisation ou de couplage n'apparaît nulle part. Notons le contraste avec les
+déploiements pré-quantiques d'accréditations anonymes : ici, même la signature de
+l'émetteur ne protège que l'authenticité de la racine ; une future cassure de ML-DSA
+permettrait une falsification de racine (une attaque de solidité, atténuée par
+re-signature avec un schéma successeur tel que la famille à base de hachage SPHINCS+
+\cite{sphincs}) mais ne pourrait jamais désanonymiser rétroactivement qui que ce soit, car
+aucune signature ne touche jamais une valeur propre à un citoyen.
+
+\paragraph{Résistance aux collisions face au quantique.} Grover n'est pas l'outil adapté
+aux collisions et nous ne revendiquons pas 128 bits de résistance quantique aux
+collisions. Nos empreintes de 256 bits donnent 128 bits de résistance classique aux
+collisions ; l'algorithme BHT \cite{bht} trouve des collisions en environ $2^{85}$
+opérations quantiques, mais exige une mémoire quantiquement adressable comparable, et sous
+toute métrique de coût qui facture cette mémoire il ne bat pas la recherche parallèle
+classique \cite{bernsteincoll}. Deux observations en bornent les conséquences.
+Premièrement, aucune propriété de vie privée ne repose sur la résistance aux collisions de
+$\LeafHash$ ou de $\Compress$ : les Théorèmes \ref{thm:anon} et \ref{thm:unlink}
+n'utilisent que le comportement de permutation aléatoire de $P$ et la min-entropie de $s$,
+si bien qu'une cassure complète des collisions ne coûte aucun anonymat, et c'est l'anonymat
+qui ne se répare pas après coup. Deuxièmement, les propriétés qui reposent sur la
+résistance aux collisions se réparent sur place, et il vaut la peine de séparer quelle
+fonction chacune sollicite. L'infalsifiabilité (Théorème~\ref{thm:unforge}) requiert la
+résistance aux collisions de $\LeafHash$ et de $\Compress$, toutes deux Poseidon2 à
+empreintes de 256 bits. La séparation des contextes dans le Théorème~\ref{thm:unlink}
+requiert celle de $\CtxHash$, qui est une propriété de SHAKE256 tronqué dans $\Fp^4$ et
+non de Poseidon2 ; les deux s'élargissent ensemble, leurs sorties faisant l'une et l'autre
+quatre éléments de corps. Aucune ne descend sous le chiffre de $2^{85}$, et ce chiffre ne
+vaut que sous le modèle de mémoire optimiste. Une juridiction qui juge la marge
+insuffisante élargit les deux empreintes à six éléments de corps, soit environ 384 bits
+(largeur d'état $t = 12$, le jeu de paramètres Poseidon2 dont nous validons déjà le
+vecteur à réponse connue), pour un coût linéaire en la taille du circuit et sans changer
+le protocole ni aucune des preuves ci-dessus. Notons que l'injectivité de l'\emph{encodage
+du contexte} (Lemme~\ref{lem:enc}), sur laquelle reposent le Théorème~\ref{thm:replay} et
+la Proposition~\ref{prop:isolation}, est une propriété syntaxique d'une disposition
+d'octets : aucune avancée cryptanalytique ne l'affecte.
+
+\subsection{Ce que le système ne résout pas}
+\label{sec:limits}
+
+\paragraph{Prêt volontaire.} Un adulte peut faire tourner le portefeuille pour un mineur,
+ou lui remettre l'appareil. Aucun système d'accréditations ne l'empêche sans test
+biométrique de présence continu, qui détruirait l'objectif de vie privée. Les atténuations
+relèvent de la friction et de la conséquence : la rotation des époques limite le rayon
+d'action d'un secret partagé ; la révocation punit le prêt commercial détecté (un secret
+prêté à grande échelle est statistiquement visible pour les sites comme un pseudonyme au
+comportement invraisemblable, signalable pour révocation sans identifier personne) ; la
+liaison optionnelle à l'appareil (secret scellé dans un élément sécurisé) élève le coût
+d'extraction. Nous rejetons consciemment l'ajout d'une étape d'autorisation
+gouvernementale par usage : elle ajouterait un canal de métadonnées tandis que, étant
+aveugle, elle ne pourrait de toute façon pas lier les usages aux personnes ; elle
+achèterait donc un risque de surveillance sans acheter aucune résistance au partage.
+
+\paragraph{Attaques Sybil et de solidité par l'AG.} Une AG malveillante peut inscrire des
+adultes fictifs ou refuser des adultes réels. C'est une attaque contre la solidité et
+l'équité, pas contre la vie privée, et elle est auditable : l'arbre est public et en ajout
+seul, sa croissance doit correspondre aux statistiques démographiques publiées, et chaque
+insertion peut être tenue de porter un reçu d'inclusion de journal de transparence.
+
+\paragraph{Racines à vue divisée.} Une AG servant à une victime une racine personnalisée
+est détectée par la diffusion des lots (Section~\ref{sec:rootpub}) ; un portefeuille qui
+vérifie son lot contre deux miroirs indépendants réduit l'attaque à la collusion des
+miroirs.
+
+\paragraph{Coercition d'inscription et l'événement d'inscription lui-même.} L'AG sait qui
+s'est inscrit. L'inscription doit donc être normalisée (groupée avec l'émission de routine
+de l'eID pour tous les adultes, jamais demandée à la demande) afin que détenir une
+accréditation ne porte aucune information sur l'intention de s'en servir.
+
+\section{Implémentation}
+\label{sec:impl}
+
+L'implémentation de référence fait environ 1{,}150 lignes de Python à dépendances minimales
+dans \texttt{code/python/} (\texttt{core.py} : corps, Poseidon2 en évaluation native et en
+circuit, arbre de Merkle creux, prouveur et vérifieur, codec binaire de transport ;
+\texttt{protocol.py} : AG, portefeuille à stockage chiffré, vérifieur de site), plus une
+suite de tests et une démonstration par scénarios. Tout ce qui accompagne cet article, ses
+sources comprises, se trouve sur
+\url{https://github.com/Kidev/ZeroKnowledgeAgeVerification}. Points de conception
+d'intérêt :
+
+\paragraph{Circuit générique par moteur.} Le circuit est écrit une seule fois contre une
+interface de moteur abstraite (const, add, sub, add-constant, mul-constant, mul) et
+exécuté par trois moteurs : un moteur natif sur éléments du corps (utilisé par l'AG, le
+portefeuille et le site pour la construction de l'arbre et le calcul des sorties
+attendues), un moteur prouveur sur triplets de parts additives qui ajoute chaque part de
+sortie de porte de multiplication aux vues par partie, et un moteur de paire qui rejoue
+les deux parties défiées pour le vérifieur, recalculant la première et consommant les
+sorties engagées de la seconde. La permutation native est
+générique en la largeur d'état, si bien que le vecteur à réponse connue Goldilocks $t =
+12$ publié par les concepteurs de Poseidon2 est contrôlé à travers cette même routine et
+non à travers une seconde implémentation écrite pour le test ; la permutation du moteur de
+circuit est ensuite contre-vérifiée contre elle à $t = 8$ sur des états aléatoires, et les
+constantes $t = 8$ sont extraites mot pour mot de l'implémentation de référence des
+concepteurs. La chaîne qui va du vecteur publié au circuit de preuve ne comporte donc
+aucun maillon qu'un test pourrait satisfaire pendant que le code de production dérive.
+
+\paragraph{Déterminisme et minimisation des vues.} Les rubans de partie sont développés
+depuis des graines de 32 octets par SHAKE256 en mode compteur avec échantillonnage par
+rejet (éléments du corps exactement uniformes) ; les parties 0 et 1 tirent leurs parts
+d'entrée des préfixes de leurs rubans, si bien qu'une ouverture ne transmet que deux
+graines, les sorties de multiplication du voisin et (quand la partie 2 est ouverte) ses
+parts d'entrée. Les engagements sont SHA3-256 sur graine et vue ; le vérifieur recalcule
+la vue de la partie défiée au lieu de la recevoir, si bien qu'une vue engagée corrompue
+est détectée avec certitude, pas avec probabilité.
+
+\paragraph{Format de transport et durcissement.} Les preuves se sérialisent dans un format
+binaire versionné aux dispositions fixes dérivées de la profondeur et du nombre de
+répétitions, chaque entier multi-octets étant en petit-boutien indépendamment de l'ordre
+d'octets de la machine : le format est une spécification et non un artefact d'une
+architecture. Le vérifieur est total : il contrôle les longueurs d'engagements, les plages
+des parts, les longueurs de vues et la consommation exacte des rubans \emph{avant} qu'une
+valeur n'atteigne une entrée de hachage, renvoie faux sur toute entrée malformée au lieu
+de lever une exception, et traite le haché de transcription comme l'unique source de
+vérité des défis. Le décodeur de transport borne la profondeur et le nombre de répétitions
+déclarés dans l'en-tête, et les recoupe avec la longueur du blob, avant de dimensionner la
+moindre allocation à partir d'eux : un décodeur qui fait confiance à une longueur fournie
+par l'attaquant est une primitive d'épuisement mémoire. Les deux propriétés sont couvertes
+par la suite de tests.
+
+\paragraph{Confinement des défaillances.} Le secret du portefeuille est constitué de 4
+éléments du corps uniformes générés par le CSPRNG du système, stocké uniquement sous
+AES-256-GCM à clé dérivée par scrypt, et utilisé exclusivement dans $\LeafHash$ et $\PRF$
+; aucun chemin de code ne le sérialise dans un message du protocole. Les chaînes de
+domaine sont rejetées si elles contiennent le séparateur de contexte, ce qui acquitte
+l'hypothèse du Lemme~\ref{lem:enc} au lieu de la supposer.
+
+\paragraph{Liaison du seuil.} Dans les déploiements multi-seuils
+(Section~\ref{sec:thresholds}), le seuil entre dans le lot de racine signé, dans le
+contexte de preuve (encodé par la chaîne de contexte \texttt{domaine\#seuil} ; \texttt{\#}
+ne peut apparaître dans un nom d'hôte, si bien que les déploiements à ensemble unique
+restent compatibles octet pour octet) et dans le registre d'épinglages par domaine du
+portefeuille, persistant dans le fichier de portefeuille chiffré. Le portefeuille expose
+le seuil demandé pour affichage avant de prouver ; un changement de seuil lève un type
+d'avertissement dédié que l'interface doit présenter, et la preuve ne se poursuit que sous
+un indicateur de contournement explicite. Le contrôle d'avertissement s'exécute avant
+tout calcul dépendant de l'appartenance, si bien que le comportement du portefeuille face
+à un changement de seuil est indépendant de l'âge du détenteur. S'il se trouve que le
+détenteur ne possède aucune feuille dans l'accumulateur demandé, le portefeuille refuse
+localement au lieu d'émettre une preuve qui ne peut se vérifier : une preuve qui échoue
+annoncerait ``ce détenteur est sous ce seuil'', alors qu'un refus local est
+indistinguable, du point de vue du site, d'un utilisateur qui a simplement dit non. Le
+site observe deux issues, jeton ou pas de jeton, au lieu de trois.
+
+\paragraph{Portage natif.} Une implémentation Rust du corps, de la permutation, de
+l'arbre, des moteurs de circuit, du prouveur et du vérifieur (\texttt{code/rust/}, environ
+1\,250 lignes, partageant la transcription Fiat-Shamir et le format binaire de transport)
+est arrimée à la référence par des tests à réponses connues extraits du code Python et par
+l'interopérabilité du format de transport : chaque implémentation vérifie, aux paramètres
+complets, des preuves produites par l'autre, si bien que les deux bases de code ne peuvent
+diverger silencieusement. Ses performances mesurées sont rapportées en
+Section~\ref{sec:perf}.
+
+\section{Performances}
+\label{sec:perf}
+
+\subsection{Mesures}
+
+Un seul c\oe ur d'un AMD Ryzen~9 7950X, CPython 3.14, Python pur (aucune extension
+native), $\tau$ répétitions, arbre de profondeur $d$ :
+
+\begin{center}
+\begin{tabular}{rrrlrrr}
+\toprule
+profondeur $d$ & capacité & $\tau$ & solidité & preuve & vérification & taille de preuve \\
+\midrule
+20 & 1,05\,M  & 219 & $< 2^{-128}$ & 3,1\,s & 2,0\,s & 14,3\,Mo \\
+27 & 134\,M   & 219 & $< 2^{-128}$ & 4,1\,s & 2,6\,s & 18,7\,Mo \\
+32 & 4,29\,Md & 137 & $< 2^{-80}$  & 3,0\,s & 1,9\,s & 13,6\,Mo \\
+32 & 4,29\,Md & 219 & $< 2^{-128}$ & 4,7\,s & 3,0\,s & 21,8\,Mo \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+L'inscription est un haché et une insertion d'arbre en $O(d)$ (de la microseconde à la
+milliseconde) ; la signature d'un lot de racine est une signature ML-DSA-65 (3\,309
+octets) ; le chiffrement et le déchiffrement du portefeuille sont dominés par scrypt,
+environ 100\,ms.
+
+Le portage Rust natif du même moteur (Section~\ref{sec:impl}), produisant des preuves
+identiques octet pour octet, mesure sur la même machine, sur
+laquelle CPython met 4,7\,s à prouver et 3,0\,s à vérifier à $d = 32$, $\tau = 219$ :
+
+\begin{center}
+\begin{tabular}{rrrlrrr}
+\toprule
+profondeur $d$ & capacité & $\tau$ & solidité & preuve & vérification & taille de preuve \\
+\midrule
+32 & 4,29\,Md & 137 & $< 2^{-80}$  & 0,20\,s & 0,12\,s & 13,6\,Mo \\
+32 & 4,29\,Md & 219 & $< 2^{-128}$ & 0,33\,s & 0,18\,s & 21,8\,Mo \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Soit environ quinze fois plus rapide que CPython sur la même machine, pour un portage
+direct sans aucune optimisation bas niveau, et déjà sous la seconde aux paramètres
+complets sur un seul c\oe ur ; les répétitions se parallélisent de surcroît entre c\oe
+urs.
+
+\subsection{Modèle de coût}
+
+Le circuit compte $344(d+3) + 5d$ portes de multiplication ; le travail du prouveur en
+vaut $3\tau$ fois, celui du vérifieur $2\tau$ fois, et la taille de preuve est dominée par
+les vues voisines transmises, 8 octets par porte et par répétition. Tous les coûts sont
+linéaires en $d$ et en $\tau$ et trivialement parallèles entre répétitions.
+
+\subsection{Trajectoire de déploiement}
+\label{sec:deploypath}
+
+Les mesures ci-dessus montrent le moteur de référence franchissant déjà la barre de la
+seconde dans son portage natif. Deux étapes supplémentaires, ne changeant ni le protocole
+ni l'énoncé, comblent l'écart restant vers un déploiement à latence interactive. (i)
+L'optimisation native du prouveur Rust inclus : Keccak vectorisé pour le développement des
+rubans, évaluation du circuit en place, dispositions de parts précalculées et parallélisme
+entre répétitions ramènent la génération de preuve à quelques centaines de millisecondes
+et en dessous sur du matériel ordinaire. (ii) Remplacer le moteur par un STARK à base de hachage ou un système MPC-in-the-head
+moderne (prétraitement de style KKW/Picnic3, ou VOLE-in-the-head) sur le circuit Poseidon2
+identique réduit les preuves à la fourchette 100 à 250\,Ko et la vérification à quelques
+dizaines de millisecondes, avec le même profil de confiance, sans mise en place, purement
+symétrique. La vérification étant locale au site, la capacité agrégée du système est
+simplement la somme des capacités des sites ; la charge de service du gouvernement est un
+fichier statique (le lot et les deltas d'arbre) sur un CDN. Il n'existe aucun coût
+gouvernemental par vérification, à quelque échelle que ce soit, ce qui n'est pas une
+optimisation mais le point central.
+
+\section{Considérations de déploiement}
+\label{sec:deploy}
+
+\paragraph{Lancement.} Inscrire par cohortes en marge des opérations de routine de l'eID
+nationale, afin que la possession soit universelle chez les adultes et ne signale rien.
+Publier l'arbre et les lots dès le premier jour avec des miroirs indépendants et un
+journal d'audit en ajout seul. Diffuser le portefeuille en open source à compilation
+reproductible, en magasin d'applications et en extension de navigateur ; le matériel de
+clé de preuve est nul (aucune mise en place), l'intégrité de la distribution est donc la
+seule préoccupation de chaîne d'approvisionnement.
+
+\paragraph{Intégration des sites.} Un site embarque la clé de vérification des lots,
+récupère les lots à intervalle régulier, émet des nonces et appelle une bibliothèque de
+vérification ; toute l'intégration est sans état hormis le stockage des nonces et des
+pseudonymes. Les régulateurs peuvent certifier des bibliothèques plutôt qu'auditer des
+flux de données, car il n'y a pas de flux de données.
+
+\paragraph{Cadre légal.} La législation devrait (i) autoriser l'inscription par
+engagement, (ii) reconnaître un jeton vérifié comme conformité aux obligations de contrôle
+d'âge, libérant la responsabilité du site, (iii) interdire aux sites d'exiger tout signal
+d'identité supplémentaire quand un jeton est présenté, y compris toute preuve contre un
+seuil d'âge supérieur à celui que leur obligation exige (Section~\ref{sec:thresholds}), et
+(iv) rendre obligatoires les exigences de transparence de la Section~\ref{sec:rootpub}. Le point (iii) compte : la
+garantie du système ne vaut que ce que vaut l'interdiction d'en demander davantage.
+
+\paragraph{Gouvernance de l'unique artefact central.} La racine est le seul objet de
+confiance. Sa clé de signature devrait résider dans un HSM avec une politique publiée de
+rotation et d'algorithme successeur (Section~\ref{sec:pq}), et l'historique des lots
+devrait être ancré dans au moins un système hors du contrôle du gouvernement.
+
+\section{Explication grand public}
+
+Supposez que le gouvernement publie une longue liste publique de codes brouillés, un par
+adulte. Le
+brouillage est à sens unique : seul votre portefeuille, une application open source qui
+tourne sur votre propre appareil, connaît le secret qui produit votre code, un secret
+qu'il a généré lui-même, hors ligne, sans contacter aucun serveur. Le gouvernement sait
+qu'il a
+placé votre code sur la liste ; c'est l'intégralité de ce qu'il saura jamais.
+
+Quand un site exige une preuve de majorité, le portefeuille produit une preuve à
+divulgation nulle de connaissance, une technique cryptographique établie dans les années
+1980 et utilisée en production aujourd'hui. Imaginez la liste du gouvernement comme une seule
+chaîne fermée faite de millions de cadenas, un par adulte, et imaginez que vous portez un
+masque. Vous détenez la clé d'exactement un de ces cadenas. Pour prouver votre majorité,
+vous ne désignez pas votre cadenas et vous ne montrez pas votre visage : vous ouvrez
+simplement la chaîne. Une chaîne ne peut s'ouvrir qu'en déverrouillant un de ses cadenas,
+donc tous les témoins sont convaincus que vous détenez une clé authentique ; le masque,
+joué ici par la couche à divulgation nulle, garantit que personne ne peut dire quel
+cadenas vous avez ouvert, ni donc qui vous êtes. La démonstration est répétée quelques
+centaines de fois avec de l'aléa frais, laissant à qui n'a pas de clé moins d'une chance
+sur $2^{128}$ de tricher. Le site
+apprend un seul fait, un adulte est présent, et reçoit un pseudonyme valable uniquement
+sur ce site et pendant un mois, de quoi reconnaître un visiteur qui revient ; les
+pseudonymes de sites différents sont mathématiquement sans rapport.
+
+Pour le lecteur qui prête au gouvernement les pires intentions : après l'inscription,
+votre portefeuille ne communique plus jamais avec lui, ni directement ni indirectement.
+Quand
+vous visitez un site, il n'existe aucun message qui puisse être intercepté, journalisé,
+exigé ou divulgué, parce qu'aucun n'est envoyé. Personne n'a besoin d'être digne de
+confiance pour effacer les traces de vos visites ; ces traces ne peuvent pas venir à
+l'existence. Les mathématiques sont publiques, le logiciel est ouvert à l'inspection et à
+la compilation reproductible, et l'unique publication du gouvernement est une liste que
+chacun peut auditer contre toute édition malhonnête. Un gouvernement totalement hostile
+pourrait cesser d'ajouter des adultes ou rayer des personnes de la liste, mais seulement
+en public, là où chaque changement est visible. Ce qu'il ne peut pas faire, avec aucun
+ordinateur y compris quantique, c'est apprendre que vous avez visité tel site. Le site, de
+son côté, sait seulement qu'un adulte a présenté une preuve valide.
+
+\section{Conclusion}
+
+Le débat autour de la vérification d'âge en ligne présente vie privée et protection de
+l'enfance comme opposées. Elles ne le sont que sous de mauvaises architectures. En
+réduisant le rôle du gouvernement à la publication d'une seule liste signée d'engagements
+brouillés et en repoussant toute la vérification dans des mathématiques locales entre
+citoyen et site, cette conception atteint simultanément la forme forte des deux propriétés
+: les sites obtiennent une attestation de majorité solide, et la correspondance entre
+visites et citoyens n'existe nulle part en tant que donnée, sous collusion, sous
+contrainte et sous attaque quantique. La construction n'utilise que des composants
+standardisés ou académiquement établis : Poseidon2, la divulgation nulle MPC-in-the-head,
+SHA-3 et ML-DSA. L'implémentation de référence accompagnant cet article démontre chaque
+comportement revendiqué et chaque attaque analysée. Ce qui reste relève de l'ingénierie
+(moteurs de preuve plus rapides, distribution du portefeuille) et de la législation
+(imposer qu'un jeton suffise). Aucune de ces deux tâches n'exige de remettre à quiconque
+la seule chose que ce système a été conçu pour ne jamais avoir à remettre.
+
+\bibliographystyle{plain}
+\bibliography{sources}
+
+\end{document}

@@ -1,0 +1,83 @@
+name: Test and build
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  paper:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Install TeX Live
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            texlive-latex-recommended texlive-latex-extra \
+            texlive-fonts-recommended latexmk
+      - name: Build both papers
+        run: make paper
+      - name: Build and self-check the arXiv tarball
+        run: make arxiv
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: papers
+          path: |
+            paper/paper.pdf
+            paper/paper.fr.pdf
+            dist/arxiv.tar
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.12'
+      - run: pip install dilithium-py cryptography
+      - name: Test suite
+        run: make test
+      - name: End-to-end demo (reduced repetitions to keep CI short)
+        run: cd code/python && python3 demo.py --reps 24 --depth 16
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.12'
+      - run: pip install dilithium-py cryptography
+      - name: Format and lint
+        run: cd code/rust && cargo fmt --check && cargo clippy --release -- -D warnings
+      - name: Selftest, including known-answer tests against the Python reference
+        run: make rust
+      - name: Wire-format interoperability, both directions
+        run: make interop
+
+  release:
+    needs: [paper, python, rust]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Collect the built papers
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: papers
+          path: dist-artifacts
+      - name: Publish the release
+        uses: softprops/action-gh-release@v3.0.2
+        with:
+          name: "Post-Quantum Anonymous Set Membership for Surveillance-Free Online Age Verification"
+          body: |
+            We present a protocol that lets websites verify that a visitor is above the age
+            of majority while making it cryptographically impossible for either the verifying
+            website or the issuing government to learn who the visitor is or which sites any
+            citizen visits. 
+          files: |
+            dist-artifacts/paper/paper.pdf
+            dist-artifacts/paper/paper.fr.pdf
+            dist-artifacts/dist/arxiv.tar

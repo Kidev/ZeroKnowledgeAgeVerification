@@ -1,0 +1,1030 @@
+\pdfoutput=1
+\documentclass[11pt]{article}
+
+\usepackage[margin=1.05in]{geometry}
+\usepackage[utf8]{inputenc}
+% Latin Modern with T1 when available (arXiv has it); plain CM otherwise
+\IfFileExists{lmodern.sty}{\usepackage[T1]{fontenc}\usepackage{lmodern}}{}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{corollary}{Corollary}
+\newtheorem{proposition}{Proposition}
+\newtheorem{lemma}{Lemma}
+\theoremstyle{definition}
+\newtheorem{definitionx}{Definition}
+
+\input{macros}
+
+\title{Post-Quantum Anonymous Set Membership for\\
+Surveillance-Free Online Age Verification}
+\author{Alexandre `kidev' Poumaroux}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We present a protocol that lets websites verify that a visitor is above the age of
+majority while making it cryptographically impossible for either the verifying website or
+the issuing government to learn who the visitor is or which sites any citizen visits. The
+core construction is anonymous set membership: the government publishes a single signed
+Merkle root committing to the set of hash commitments of verified adults, and each
+citizen's open-source wallet proves in zero knowledge that it knows the preimage of some
+leaf under that root, together with the correct derivation of a per-site, per-epoch
+pseudonymous key. Verification is performed entirely offline by the website against the
+published root; the government is structurally absent from every usage flow, so there
+exists no verification traffic, timestamp, or counter that could be logged, correlated, or
+subpoenaed. All primitives are hash based or lattice based: Poseidon2 over the Goldilocks
+field for commitments, Merkle compression, and pseudonym derivation; the MPC-in-the-head
+proof system ZKBoo compiled with Fiat-Shamir for the zero-knowledge argument; and
+ML-DSA-65 (FIPS 204) for root authentication. The design consequently withstands quantum
+adversaries. We give game-based definitions and complete proofs for anonymity,
+unforgeability, and replay resistance, an honest treatment of the one property no
+credential system can enforce (voluntary lending), and measured performance of a complete
+reference implementation: at 128-bit soundness over a tree with 4.29 billion leaf
+capacity, proving takes 4.7\,s and verification 3.0\,s on a single core of an AMD Ryzen~9 7950X in pure
+Python, with a 21.8\,MB proof, while the accompanying Rust port of the same backend proves
+in 0.33\,s and verifies in 0.18\,s on one core, fifteen times faster than CPython measured
+on that same machine. We analyze the path to sub-200\,KB proofs and tens-of-milliseconds
+verification with production proof backends.
+\end{abstract}
+
+\section{Introduction}
+
+Online age verification mandates are proliferating, for social networks, app stores, and
+a growing range of age-gated services, and every widely deployed compliance mechanism
+forces a fatal trade: either the website learns who you are (document upload, face scan),
+or a third party learns where you go (centralized verification services, federated
+identity). Both create databases whose mere existence is the harm: a standing record of
+who visits what online is general-purpose surveillance infrastructure, one leak, one
+subpoena, or one policy change away from being turned against any citizen or group. The
+result is predictable: adults evade the checks, minors follow the same evasion routes, and
+the stated child-protection goal fails while the surveillance risk remains.
+
+We take as our design constraint the strongest possible version of the privacy
+requirement, stated as an inviolable rule: the system must let a website confirm ``this
+visitor is an adult certified by the government'' while giving neither the website nor the
+government, nor the two colluding, any capability, ever, of mapping a visit to a citizen.
+The guarantee must be mathematical, not institutional: a citizen who assumes the
+government is actively malicious must still be safe using the system.
+
+Formally, the system must satisfy:
+\begin{description}[leftmargin=2.6em,style=nextline]
+\item[R1 (Soundness).] A website accepts only visitors holding a credential issued by the
+government to a verified adult.
+\item[R2 (Issuer blindness).] The government cannot determine which citizen is behind any
+verification event, nor that any particular citizen used the system at all after
+enrollment.
+\item[R3 (Verifier blindness).] The website learns exactly one bit (adult: yes) plus,
+optionally, a pseudonym stable only within that site and a bounded time window; pseudonyms
+across sites are unlinkable even to colluding sites.
+\item[R4 (Collusion resistance).] R2 and R3 hold even if the government and any set of
+websites pool all their data.
+\item[R5 (Post-quantum security).] All properties hold against quantum adversaries.
+\end{description}
+
+Two structural decisions do most of the work. First, the government signs no per-citizen
+value at any point: its entire cryptographic output is one signature on one public
+accumulator, so no signature can ever act as a tracking tag. Second, verification requires
+only public parameters, so it is performed locally by the website; the government has no
+verification endpoint, and messages that are never sent cannot be logged, correlated, or
+subpoenaed.
+
+Our contributions:
+\begin{enumerate}[leftmargin=2em]
+\item A protocol built from anonymous set membership that satisfies R1 through R5, in
+which the government's entire online footprint is one signed public value and verification
+is a local computation at the website (Section~\ref{sec:protocol}).
+\item Game-based security definitions and complete proofs (Section~\ref{sec:security}),
+including an exact accounting of what each party and each colluding coalition can compute,
+and an explicit statement of the properties the system does not provide.
+\item A complete reference implementation at production parameters:
+Poseidon2-Goldilocks with the official constants of its designers, 256-bit digests, a
+$2^{32}$-capacity sparse Merkle accumulator, $2^{-128}$ Fiat-Shamir soundness, ML-DSA-65
+root signing, an encrypted wallet format, and a binary wire format; a native Rust port of
+the prover and verifier interoperable with it at the wire level; plus measured benchmarks
+and a test suite covering the attacks analyzed in Section~\ref{sec:security}
+(Sections~\ref{sec:impl}, \ref{sec:perf}).
+\end{enumerate}
+
+\section{Related Work}
+
+\paragraph{Anonymous credentials.} Chaum's blind signatures \cite{chaum} began the study
+of credentials that issuers cannot trace. Brands \cite{brands} and Camenisch-Lysyanskaya
+\cite{cl} built full anonymous credential systems; modern deployments (Idemix, BBS+ in
+verifiable-credential profiles \cite{w3cvc}) descend from the latter. All practical
+instantiations rely on RSA, discrete-log, or pairing assumptions and fall to Shor's
+algorithm \cite{shor}; post-quantum anonymous credentials and blind signatures remain
+research prototypes with large keys, large signatures, restricted concurrent security, or
+non-standard assumptions \cite{aksy,delpino}.
+
+\paragraph{Set-membership pseudonymity.} Architecturally, our construction descends
+from Semaphore-style anonymous signaling \cite{semaphore} and from the nullifier design of
+Zerocash \cite{zerocash}: identity is a secret whose commitment lives in a public Merkle
+set, membership is proven in zero knowledge, and deterministic PRF outputs provide scoped
+pseudonyms (external nullifiers). We adapt this pattern to age verification, replace its
+discrete-log-based proof systems and hashes with post-quantum components, and add
+verifier-side transcript binding for replay resistance without any coordinating server.
+
+\paragraph{Rate-limited anonymous tokens.} Privacy Pass \cite{privacypass} and its
+rate-limited variants let users spend unlinkable tokens; they address a different problem
+(per-request unlinkability with an online issuer) and their VOPRF foundations are
+pre-quantum.
+
+\paragraph{Age verification systems.} Commercial providers (document upload, face
+estimation) reveal identity or biometrics to a party that must be trusted. The W3C
+Verifiable Credentials model \cite{w3cvc} supports selective disclosure but its
+unlinkable-presentation profiles rest on BBS+ (pairings, hence pre-quantum), and its
+issuer-involved presentation flows leak usage metadata. The EU Digital Identity Wallet's
+age-attestation work shares our goal for R3 but not our threat model for R2/R4: it trusts
+the issuer not to correlate.
+
+\paragraph{Proof systems.} Zero-knowledge proofs originate with Goldwasser, Micali, and
+Rackoff \cite{gmr}. ZKBoo \cite{zkboo} and its successors (ZKB++/Picnic \cite{picnic}, KKW
+\cite{kkw}) construct zero-knowledge arguments from the MPC-in-the-head paradigm of Ishai
+et al.\ \cite{ikos}, using only symmetric primitives: no trusted setup, plausible
+post-quantum security. STARKs \cite{stark} achieve the same trust profile with succinct
+proofs at the cost of implementation complexity. Our reference implementation uses ZKBoo
+for auditability; Section~\ref{sec:deploypath} quantifies the STARK/VOLE-in-the-head
+deployment path.
+
+\paragraph{Post-quantum standards.} NIST standardized ML-DSA (Dilithium) as FIPS 204
+\cite{fips204,dilithium} and SHA-3 as FIPS 202 \cite{fips202}; Poseidon2 \cite{poseidon2}
+is the current standard arithmetization-friendly permutation for zero-knowledge systems.
+Grover's algorithm \cite{grover} halves symmetric security levels, which our parameter
+choices account for.
+
+\section{System and Threat Model}
+\label{sec:model}
+
+\paragraph{Participants.} A Government Authority (GA) that verifies age through existing
+civil registry mechanisms; Citizens running an open-source Wallet on their own devices;
+Websites that must gate content on adulthood.
+
+\paragraph{Trust assumptions.} (i) The GA verifies age correctly at enrollment and enrolls
+only adults; (ii) cryptographic primitives satisfy their standard security notions
+(collision resistance and PRF security of the Poseidon2-based functions of
+Section~\ref{sec:prims}, EUF-CMA of ML-DSA-65, random-oracle behavior of SHA3/SHAKE
+\cite{bellrog} for commitments and Fiat-Shamir); (iii) the citizen's device is not
+compromised. We explicitly do \emph{not} assume the GA refrains from correlating,
+colluding, or coercing; that websites behave; or that citizens keep credentials to
+themselves.
+
+\paragraph{Adversaries.} A malicious GA may record everything it ever sees, collude with
+websites, and attempt split-view attacks on published data. Malicious websites may pool
+data with each other and the GA and attempt cross-site linkage. Malicious citizens may
+attempt to forge membership, replay tokens, or lend credentials. All adversaries may be
+quantum-capable.
+
+\paragraph{Security goals.}
+\textbf{G1} Unforgeability: no coalition lacking an enrolled secret produces an accepted
+token, except with negligible probability.
+\textbf{G2} Anonymity: for any accepted token, no coalition of GA and websites can
+distinguish which of the enrolled citizens produced it with advantage non-negligibly
+better than guessing among all enrolled citizens consistent with public data.
+\textbf{G3} Cross-site unlinkability: tokens presented at different sites (or in different
+epochs) cannot be linked to the same citizen.
+\textbf{G4} Replay resistance: a token accepted once is not accepted again, at the same or
+any other site.
+\textbf{G5} All of the above against quantum adversaries.
+
+\paragraph{Out of scope.} Network-layer identifiers (IP addresses) are visible to websites
+as with any HTTPS request; citizens who require network anonymity compose the system with
+Tor or a VPN, which it does not interfere with, precisely because no government endpoint
+is contacted. Device compromise and legal compulsion of the citizen herself are out of
+scope.
+
+\section{The Protocol}
+\label{sec:protocol}
+
+\subsection{Primitives and parameters}
+\label{sec:prims}
+
+\paragraph{Field.} The Goldilocks prime $p = 2^{64} - 2^{32} + 1$. All protocol values are
+vectors over $\Fp$; digests are 4 elements (256 bits).
+
+\paragraph{Permutation.} Poseidon2 \cite{poseidon2} with state width $t = 8$, S-box $x^7$,
+8 external and 22 internal rounds, using the round constants and internal matrix published
+by its designers. Throughout the paper, $P : \Fp^8 \to \Fp^8$ denotes this permutation and
+$\Trunc : \Fp^8 \to \Fp^4$ the projection of a state onto its first four elements. From
+$P$ we build three domain-separated functions, using three \emph{distinct} field
+constants $\mathit{tag}_{\mathrm{leaf}}, \mathit{tag}_{\mathrm{prf}},
+\mathit{tag}_{\mathrm{empty}} \in \Fp$ (their pairwise distinctness is what makes the
+domain separation load-bearing in Theorem~\ref{thm:unforge}):
+\begin{align*}
+\LeafHash(s) &= \Trunc\bigl(P(s_0, s_1, s_2, s_3, \mathit{tag}_{\mathrm{leaf}}, 0, 0, 0)\bigr),\\
+\Compress(l, r) &= \Trunc\bigl(P(l \,\|\, r) + (l \,\|\, r)\bigr),\\
+\PRF(s, c) &= \Trunc\bigl(P(P(s_0, s_1, s_2, s_3, \mathit{tag}_{\mathrm{prf}}, 0, 0, 0) \boxplus c)\bigr),
+\end{align*}
+the enrollment commitment of secret $s \in \Fp^4$, the 2-to-1 Merkle compression (the
+feed-forward compression mode recommended by the Poseidon2 authors), and the pseudonym
+derivation. Here $l \,\|\, r \in \Fp^8$ denotes concatenation and $x \boxplus c \coloneqq
+(x_0 + c_0, \ldots, x_3 + c_3, x_4, \ldots, x_7)$ adds the 4-element context $c$ into the
+rate, leaving the capacity untouched. Contexts are $c
+= \CtxHash(\mathrm{domain}, \mathrm{epoch})$, 4 elements derived by SHAKE256 with
+rejection sampling; multi-threshold deployments fold the age threshold into the hashed
+domain string (Section~\ref{sec:thresholds}). Under standard sponge and compression-mode analyses these provide
+128-bit collision resistance and 128-bit post-quantum preimage resistance (capacity and
+digest are 256 bits; Grover \cite{grover} halves the exponent).
+
+\paragraph{Accumulator.} A sparse incremental Merkle tree \cite{merkle} of depth $d = 32$
+(capacity $2^{32} \approx 4.29$ billion, sufficient for any national or federated
+population) with all-equal empty leaves $E =
+\Trunc(P(0,0,0,0,\mathit{tag}_{\mathrm{empty}},0,0,0))$ and cached empty-subtree digests,
+so insertion and path computation cost $O(d)$ regardless of occupancy.
+
+\paragraph{Zero-knowledge argument.} ZKBoo \cite{zkboo}, an MPC-in-the-head
+\cite{ikos} argument system realizing zero-knowledge proofs \cite{gmr}, over the
+arithmetic circuit of Section~\ref{sec:issuance}, with the $(2,3)$ additive decomposition
+over $\Fp$, party tapes expanded from 256-bit seeds by SHAKE256 in counter mode, SHA3-256
+view commitments, and Fiat-Shamir challenges derived by SHA3-256 over the full transcript,
+modeled as a random oracle \cite{bellrog}. Each repetition has soundness error $2/3$; we
+use $\tau = 219$ repetitions, giving error $(2/3)^{219} < 2^{-128}$. Input shares of two
+parties are tape-derived (the ZKB++ optimization \cite{picnic}); the third party's shares
+and the neighbor view's multiplication outputs are the only per-gate data transmitted.
+
+\paragraph{Root authentication.} ML-DSA-65 (FIPS 204 \cite{fips204}), NIST security
+category 3, signs each published root bundle.
+
+\paragraph{Wallet storage.} The secret is encrypted at rest with AES-256-GCM under a key
+derived by scrypt ($N = 2^{15}$, $r = 8$, $p = 1$).
+
+\subsection{Enrollment}
+
+The wallet samples $s \leftarrow \Fp^4$ uniformly (256 bits of local entropy that never
+leave the device) and computes $\mathit{leaf} = \LeafHash(s)$. The citizen authenticates
+to the GA by whatever existing civil-identity mechanism the jurisdiction uses (in person
+or via eID) and submits only $\mathit{leaf}$. The GA verifies the citizen is an adult not
+previously enrolled, appends $\mathit{leaf}$ to the tree at the next free index, and
+records $(\mathrm{citizen\_id}, \mathrm{index})$. Key generation is entirely local:
+producing $s$ and $\mathit{leaf}$ requires no network connection at all, so a wallet app
+can create its credential fully offline (even on an air-gapped device) and disclose the
+commitment only at the moment of enrollment; nothing about the key ever depends on a
+server.
+
+The GA is permitted to remember this mapping forever. It is harmless: $\mathit{leaf}$ and
+index never appear in any later message the GA could observe. Anonymity does not rest on
+the GA forgetting; it rests on the GA never seeing anything else.
+
+\subsection{Root publication}
+\label{sec:rootpub}
+
+After each batch of enrollments or revocations the GA publishes a root bundle
+\[
+B = \bigl(\mathit{root}, \mathit{size}, \mathit{issued}, d,\
+\mathrm{Sig}_{\text{ML-DSA-65}}(\ell \,\|\, \mathit{root} \,\|\, \mathit{size} \,\|\,
+\mathit{issued} \,\|\, d)\bigr),
+\]
+where $\mathit{size}$ is the number of leaves allocated so far, $\mathit{issued}$ the
+publication timestamp, and $\ell$ is a fixed version label (extended with the age threshold in the
+multi-threshold deployment of Section~\ref{sec:thresholds}), published together with the
+full leaf sequence, the tree being public data. Bundles are distributed
+transparency-log style: mirrored, gossiped, and append-only audited, so the GA cannot
+serve different roots to different users (a split-view attack would otherwise let it give
+one citizen a personalized tree and recognize the resulting proofs; gossip reduces this to
+an attack detectable by comparing two bundle observations). Wallets synchronize the tree
+in bulk, or via private information retrieval, so obtaining one's path reveals nothing
+about which leaf is one's own; websites need only the bundle.
+
+\subsection{Token issuance}
+\label{sec:issuance}
+
+To visit domain $D$ in epoch $e = \lfloor \mathrm{now} / 30\ \mathrm{days} \rfloor$, the
+wallet obtains a fresh 128-bit nonce $n$ from the website, computes $c = \CtxHash(D, e)$,
+the pseudonym $k = \PRF(s, c)$, the Merkle path $(b_0, \sigma_0, \ldots, b_{d-1},
+\sigma_{d-1})$ for its leaf, where $b_i \in \{0,1\}$ is the $i$-th bit of the leaf index
+and $\sigma_i \in \Fp^4$ the sibling digest at level $i$, and a proof $\pi$ of the
+statement
+\begin{align*}
+S(\mathit{root}, k, c):\quad \exists\, s, (b_i, \sigma_i)_{i<d}:\quad
+& b_i \in \{0,1\},\\
+& \MerkleFold\bigl(\LeafHash(s), (b_i, \sigma_i)_{i<d}\bigr) = \mathit{root},\quad
+\PRF(s, c) = k.
+\end{align*}
+Here $\MerkleFold$ is the iterated root recomputation defined by $h_0 = x$ and, for $0 \le
+i < d$, $h_{i+1} = \Compress(h_i, \sigma_i)$ if $b_i = 0$ and $h_{i+1} =
+\Compress(\sigma_i, h_i)$ if $b_i = 1$, with $\MerkleFold\bigl(x, (b_i,
+\sigma_i)_{i<d}\bigr) = h_d$. The statement is realized as the arithmetic circuit: one
+$\LeafHash$ permutation; per level, a 1-multiplication conditional swap per digest
+element, one booleanity constraint $b_i^2 - b_i = 0$ exposed as a public zero output, and
+one $\Compress$ permutation; and two permutations for the PRF. Circuit size is $344(d+3) +
+5d$ multiplication gates (12{,}200 at $d = 32$). The Fiat-Shamir transcript hashes, in
+addition to all commitments and output shares, the context string
+\[
+\mathit{ctx} = \text{``avsm-token/1''} \,\|\, D \,\|\, e \,\|\, \mathit{root} \,\|\, k
+\,\|\, n,
+\]
+binding the proof to the domain, epoch, root, claimed pseudonym, and the website's nonce,
+where consecutive fields are joined by a fixed reserved separator byte (the byte
+\texttt{|}, which occurs in no hostname). Write $\Enc(D, e, \mathit{root}, k, n)$ for this
+byte string; the replay argument of Section~\ref{sec:security} needs one syntactic property
+of it.
+
+\begin{lemma}[Context encoding]
+\label{lem:enc}
+If the domain field contains no occurrence of the separator byte, then $\Enc$ is
+injective.
+\end{lemma}
+
+\begin{proof}
+Every field after the domain has a fixed width: 8 bytes for $e$, 32 each for
+$\mathit{root}$ and $k$, and $n$ runs to the end of the string. A separator-free domain
+field is therefore delimited by the first separator, and the remaining fields are read off
+at fixed offsets, so the byte string determines the tuple.
+\end{proof}
+
+\noindent
+Hostnames contain no separator byte, but that is a property of the caller's input rather
+than of the protocol, so wallet and verifier both reject a domain containing one before
+hashing anything. The token is $(k, e, D, \pi)$.
+
+\subsection{Verification (offline)}
+\label{sec:verification}
+
+The website checks that $n$ is one it issued, unexpired (600\,s TTL) and unconsumed; that
+$D$ matches itself and $|e - e_{\mathrm{now}}| \le 1$, where $e_{\mathrm{now}}$ is the
+epoch of the verifier's own clock; recomputes $c$ and the expected public outputs $(k,
+\mathit{root}, 0^d)$, where $0^d$ is the vector of $d$ zeros the booleanity constraints
+must produce using the root from its latest verified bundle;
+and runs the proof verifier: for each repetition, derive the challenge from the
+transcript, re-expand the two opened seeds, recompute the first opened party's entire view
+and the second opened party's wire evaluation from its committed multiplication outputs,
+and check both commitments, both parties' output shares, and the three-share
+reconstruction of every public output. On success it marks $n$ consumed and may associate
+$k$ with a session or account. No message leaves the website.
+
+\subsection{Revocation and epochs}
+
+Revocation (stolen wallet, erroneous enrollment, death) is a leaf reset to $E$ and a new
+bundle; the revoked secret no longer satisfies $S$ against the new root, and all other
+citizens' proofs continue to verify after their wallet syncs the updated path. Epochs
+bound pseudonym lifetime: a site's key $k$ rotates every 30 days, so long-horizon profile
+building at a single site is capped, while within an epoch the stable $k$ gives sites a
+returning-visitor handle without cookies or accounts. Websites accept tokens whose epoch
+is within one of their current epoch (the previous or the next, matching the check $|e -
+e_{\mathrm{now}}| \le 1$ of Section~\ref{sec:verification}), tolerating clock skew and
+boundary races around epoch rollover.
+
+\subsection{Multiple age thresholds}
+\label{sec:thresholds}
+
+Nothing in the construction is specific to the age of majority; adulthood is simply the
+predicate the GA checks at enrollment. A jurisdiction whose laws gate different services
+at different ages (13, 15, 16, 18) runs one accumulator per threshold: the GA maintains
+parallel trees $\tree_{13}, \tree_{15}, \ldots$, one per threshold $a$, each with its own root
+$\mathit{root}_a$, inserts a citizen's commitment into every tree whose threshold the
+citizen satisfies, and publishes one signed bundle per tree with $a$ bound under the
+signature, so a root cannot be presented as certifying a different threshold than the one
+it was published for. The same wallet secret and the same commitment serve every tree,
+though the trees fill independently, so the wallet stores one leaf index per tree;
+insertions for citizens crossing a threshold are batched with the regular bundle cadence;
+revocation clears the leaf in every tree. All security theorems apply per tree unchanged,
+and the anonymity set of a proof against $\tree_a$ is the set of enrolled citizens satisfying
+threshold $a$, a population-scale set at every $a$.
+
+\paragraph{The bracketing attack.} A website whose duty is threshold $a$ learns one bit,
+age $\ge a$. Nothing forces a hostile website to stop there. A site that admits visitors
+at 13 could additionally test each visitor against the 18 threshold: adults pass, a
+fourteen-year-old fails, and the site has sorted the very users it admits into age
+brackets. A multi-threshold design must close this channel, and must close it with
+mathematics rather than with terms of service. Three mechanisms do so. The first two are
+cryptographic; the third makes the only request they cannot eliminate visible to the
+person it targets.
+
+\begin{enumerate}[leftmargin=2em]
+\item \emph{Threshold binding.} The threshold is welded into the proof itself. The
+context becomes $c_a = \CtxHash(D, e, a)$ (implemented by injecting $a$ into the hashed
+context string of Section~\ref{sec:issuance}), the pseudonym becomes $k = \PRF(s, c_a)$,
+and the Fiat-Shamir transcript binds $(D, e, \mathit{root}_a, k, n)$ together with $a$. A
+proof is therefore a proof \emph{for one threshold}: retesting it against any other
+threshold's root fails, for every visitor, whether or not that visitor belongs to the
+other tree (Proposition~\ref{prop:isolation}, Section~\ref{sec:isolation}). A retest that
+fails for everyone reveals nothing about anyone.
+\item \emph{Single use.} The transcript binds the site's fresh nonce and the verifier
+consumes it (Theorem~\ref{thm:replay}), so a received token cannot be replayed against
+anything, including another root. Probing therefore cannot recycle material the site
+already holds; it would require asking the wallet for a brand new proof.
+\item \emph{Wallet-side transparency.} That remaining request is made to the wallet, and
+the wallet is the citizen's agent, not the site's. The wallet displays which threshold a
+site asks it to prove, remembers the first threshold each domain declared, and treats any
+change, or any request to prove a second threshold, as suspect: it interrupts with an
+explicit warning, refuses by default, and proceeds only on deliberate user confirmation
+(deployments may confine the override to advanced settings). The warning logic runs
+before any membership-dependent computation, so it is triggered identically by every
+wallet, whatever the holder's age; and a wallet holding no leaf in the requested
+accumulator declines locally rather than emitting a proof that would fail, so the site
+cannot distinguish that case from a refusal. The site cannot read an age off the wallet's reaction,
+only off an answer the user knowingly chooses to give, and the probing request itself
+becomes user-visible, recordable evidence of abuse.
+\end{enumerate}
+
+A domain's threshold thereby becomes part of its public identity. A site remains free to
+declare 18 for a nominally 13+ service, but it then turns minors away uniformly and
+visibly, and still receives one bit. The natural-seeming cascade (attempt $\tree_{18}$, fall
+back on $\tree_{16}$, conclude $16 \le \mathrm{age} < 18$) is pointless for honest sites,
+since a visitor proves directly against the site's one declared threshold, and is exactly
+the double-request pattern that mechanism 3 flags. Because pseudonyms derive from the
+thresholded context, tokens for different thresholds at one domain are additionally
+unlinkable (Theorem~\ref{thm:unlink} applies, since $c_a \ne c_b$ for $a \ne b$), defense
+in depth if a user ever does confirm a second threshold. The legal prohibition of
+Section~\ref{sec:deploy}, point (iii), remains as a liability backstop, but the mechanism
+does not depend on it. The reference implementation enforces all of this: bundles carry
+the threshold under the GA signature, the context hash folds the threshold in, wallets
+maintain a persistent pin store and raise an explicit, age-independent warning on any
+change, and a website configured with a required threshold refuses bundles for any other.
+
+\section{Security Analysis}
+\label{sec:security}
+
+Throughout, the hash functions are the Poseidon2 constructions of Section~\ref{sec:prims},
+the underlying permutation is modeled as a public random permutation, SHA3/SHAKE are
+modeled as random oracles \cite{bellrog}, $\negl$ denotes a negligible function of the
+security parameter, $q$ bounds the adversary's oracle queries, $\tau$ is the repetition
+count, and $\adv$ is a PPT (or QPT, Section~\ref{sec:pq}) adversary. The \emph{published
+tree} means the complete depth-$d$ binary tree determined by the published leaf sequence,
+with every unoccupied position holding the empty leaf $E$ and every unoccupied subtree
+holding its cached digest; every position at every level is thus well defined.
+
+\subsection{Unforgeability (G1, R1)}
+
+\begin{theorem}
+\label{thm:unforge}
+Assume view commitments are binding (SHA3-256 as a random oracle), $\LeafHash$ and
+$\Compress$ are collision and preimage resistant, challenges are derived by Fiat-Shamir in
+the random oracle model, and the root the website verifies against comes from a bundle
+whose ML-DSA-65 signature it checked (so that ``published tree'' is well defined; without
+EUF-CMA of the signature scheme a forged bundle would let an adversary choose the root). If any coalition of citizens, websites, and
+holders of the GA's public information causes an honest website to accept a token, then
+except with probability at most $q(2/3)^\tau + O(q^2)\,2^{-256}$ there exists an
+extractable witness $(s, \mathrm{path})$ such that $\LeafHash(s)$ is a leaf of the
+published tree; and if no coalition member was enrolled with that leaf, the extraction
+additionally yields a preimage or collision of the hash functions.
+\end{theorem}
+
+\begin{proof}
+Fix an accepting token $(k, e, D, \pi)$, let $\mathit{root}$ be the value the website
+verified against, and let $c = \CtxHash(D, e)$ be the context the website recomputed.
+
+\emph{Step 1 (commitments bind the views).} Each repetition carries three SHA3-256
+commitments over (seed, view). Producing two distinct openings for any single commitment
+requires a collision in the random oracle, so over all of $\adv$'s $q$ queries this
+happens with probability at most $q^2 2^{-256}$. Except in that event, at the moment a
+transcript is first submitted to the challenge oracle, every repetition of that transcript
+is bound to one fixed triple of views: two of them determined entirely by their seeds, the
+third by its seed together with its committed input shares and multiplication outputs.
+
+\emph{Step 2 (a false statement corrupts at least one pair per repetition).} Consider one
+repetition, its bound triple of views, and the three per-party output-share vectors
+included in the transcript. Party indices run over $\{0,1,2\}$ and are read modulo 3
+throughout. Call the pair $(i, i{+}1)$ \emph{consistent} if the verifier's
+deterministic recomputation for challenge $i$ succeeds: party $i$'s view re-derives
+exactly from its seed (and committed inputs where applicable), every multiplication gate
+of party $i$ is consistent with the tapes of parties $i$ and $i{+}1$ and the committed
+gate outputs of party $i{+}1$, and both parties' circuit outputs equal the transcript's
+output shares. If all three pairs are consistent, the three input-share vectors jointly
+define a witness $w$ (the coordinate-wise sum of the shares), and by induction over the
+circuit's gates every wire's three shares sum to the native evaluation of that wire on
+$w$; since the verifier also checks that the output shares sum to $(k, \mathit{root},
+0^d)$, $w$ satisfies $S(\mathit{root}, k, c)$. Taking the contrapositive: if the bound
+views embed no witness for $S$, at least one of the three pairs is inconsistent, and the
+verifier accepts the repetition only when the challenge lands on one of the at most two
+consistent pairs, probability at most $2/3$.
+
+\emph{Step 3 (Fiat-Shamir).} Challenges for a transcript $T$ are the random oracle's
+output on $T$. For any single $T$ bound as in Step 1 to views lacking a witness, the
+probability that its challenge vector avoids every inconsistent pair across all $\tau$
+repetitions is at most $(2/3)^\tau$. A union bound over the adversary's $q$ oracle queries
+bounds its total success probability by $q\,(2/3)^\tau$, which for $\tau = 219$ is below
+$q\,2^{-128}$. The union is over transcripts rather than repetitions because the verifier
+derives all $\tau$ challenges from the single hash of one transcript and rejects unless
+every repetition passes, so the adversary gets one draw of the whole challenge vector per
+query, not one draw per repetition.
+
+\emph{Step 4 (extraction and reduction to hash security).} In the remaining case, some
+accepted transcript's bound views contain a witness $(s, (b_i, \sigma_i)_{i<d})$ for $S$.
+The booleanity outputs force each $b_i \in \{0,1\}$ exactly, so $\MerkleFold$ performs a
+genuine root recomputation along the path selected by the bits. Compare this recomputation
+to the published tree, level by level from the root down: either every node produced
+equals the published node at the corresponding position, in which case $\LeafHash(s)$
+equals the published leaf at index $\sum_i b_i 2^i$; or there is a highest level at which
+the recomputed child pair differs from the published children while the parent agrees,
+which exhibits a collision in $\Compress$. In the first case, if the indexed position
+holds the empty leaf $E$, then $(s, \mathit{tag}_{\mathrm{leaf}}, 0, 0, 0)$ and
+$(0,0,0,0,\mathit{tag}_{\mathrm{empty}},0,0,0)$ are distinct permutation inputs (they
+differ in the tag slot, since $\mathit{tag}_{\mathrm{leaf}} \ne
+\mathit{tag}_{\mathrm{empty}}$, whatever $s$ is) with equal truncated outputs, a collision
+across the domain-separated instances; if the position
+holds an honest citizen's commitment, $s$ is a preimage of that commitment. Each event
+contradicts the assumed hash security except with negligible probability, so an accepted
+token implies knowledge of an enrolled secret, within the stated bounds.
+\end{proof}
+
+\subsection{Anonymity and collusion resistance (G2, R2, R4)}
+
+\begin{definitionx}[Anonymity game]
+The adversary controls the GA and all websites, runs enrollment for citizens of its choice
+plus two honest wallets $W_0, W_1$ which it enrolls (learning their leaves and indices,
+but not their secrets). It then queries a token oracle at most $q$ times: a query
+$(j, D, e, n)$ with $j \in \{0,1\}$ returns the token $W_j$ would produce for $(D, e, n)$
+against the current published root. At challenge time $\adv$ picks $(D^*, e^*)$ at which
+it has made no token query for either honest wallet, together with a nonce $n^*$ of its
+choice; the challenger flips a fair coin $\beta \in \{0,1\}$, and $W_\beta$ produces a
+token for $(D^*, e^*, n^*)$ which $\adv$ receives. $\adv$ outputs a guess $\beta'$. The
+system is anonymous if $|\Pr[\beta' = \beta] - 1/2| \le \negl$.
+\end{definitionx}
+
+\begin{theorem}
+\label{thm:anon}
+In the random oracle and random permutation model, the protocol is anonymous in the above
+game, with adversarial advantage at most $O(q)\,2^{-253}$.
+\end{theorem}
+
+\begin{proof}
+We proceed by a hybrid argument over the challenge token.
+
+Hybrid $H_0$ is the real game.
+
+Hybrid $H_1$ replaces the proof $\pi$ by a simulated proof. The simulator samples the
+challenge vector first; then, for each repetition, it constructs the two views to be
+opened exactly as an honest prover would (uniform tapes expanded from fresh seeds, input
+shares tape-derived or explicit as the party indices dictate), completes their
+gate-by-gate values so that all pair checks and both output-share vectors are consistent
+with the public outputs, commits honestly to those two views, commits to a uniformly
+random string in place of the third view, and programs the random oracle so that the
+resulting transcript maps to the pre-sampled challenges. The opened data in $H_1$ is
+distributed identically to $H_0$: in both worlds the two opened views consist of uniform,
+independent tape values and of shares whose joint distribution is fixed by the same
+consistency constraints, because any two of the three additive shares of every wire are
+uniform and independent of the witness. Two failure events separate the hybrids: the
+adversary queries the random oracle on the preimage of the unopened commitment, which
+contains a fresh 256-bit seed it never sees, probability at most $q\,2^{-256}$; or the
+transcript to be programmed was already queried, which requires guessing one of the fresh
+seeds inside the commitments, again at most $q\,2^{-256}$.
+
+Hybrid $H_2$ replaces $k = \PRF(s_\beta, c^*)$, where $c^* = \CtxHash(D^*, e^*)$ and
+$s_\beta$ is $W_\beta$'s secret, by a uniform random digest. Since every proof is
+simulated after $H_1$, the adversary's entire view of $s_\beta$ is a list of digests:
+$\mathit{leaf}_\beta = \Trunc\bigl(P(s_{\beta,0}, \ldots, s_{\beta,3},
+\mathit{tag}_{\mathrm{leaf}}, 0, 0, 0)\bigr)$ from enrollment, the pseudonyms
+$\PRF(s_\beta, c_1), \ldots, \PRF(s_\beta, c_m)$ returned by its $m \le q$ token queries,
+and the challenge $k$. Write $y = P(s_{\beta,0}, \ldots, s_{\beta,3},
+\mathit{tag}_{\mathrm{prf}}, 0, 0, 0)$ for the shared inner image.
+
+Two observations give the hybrid. First, $s_\beta$ is uniform over $\Fp^4$ (min-entropy
+above $255$ bits), so the leaf state and the inner PRF state are distinct points of $P$,
+differing in the tag slot; with $P$ a public random permutation their images are
+independent and uniform unless $\adv$ queries $P$ or $P^{-1}$ at a point whose rate half
+is $s_\beta$, which each of its $q$ queries does with probability at most $2^{-255}$.
+Second, the game forbids a token query at $(D^*, e^*)$, so $c_i \ne c^*$ for every $i$
+except when $\CtxHash$ collides on distinct inputs, probability at most $q\,2^{-255}$;
+the outer permutation calls are then evaluated at the $m+1$ distinct points $y \boxplus
+c_1, \ldots, y \boxplus c_m, y \boxplus c^*$, whose images are jointly uniform and
+independent unless $\adv$ queries $P$ at one of them, and $y$ is itself unqueried and
+uniform. Conditioning on neither event, $k$ is uniform and independent of everything else
+$\adv$ holds, exactly as in $H_2$. Hence $H_1$ and $H_2$ differ by at most
+$O(q)\,2^{-253}$. Note that the $m$ prior pseudonyms are what make this step necessary:
+they are the only other place $s_\beta$ is used, and they are handled rather than
+excluded.
+
+In $H_2$ the challenge token is (uniform $k$, $e^*$, $D^*$, simulated $\pi$) and is a
+sample from a distribution that does not depend on $\beta$, so the advantage in $H_2$ is
+zero. Summing the hybrid distances proves the theorem.
+\end{proof}
+
+\begin{corollary}[What a full-collusion coalition holds]
+The coalition of the GA and all websites possesses: the registry (citizen $\to$ leaf), the
+public tree, and per site a set of pseudonyms $k$ with session metadata. Theorem~\ref{thm:anon}
+compares two wallets; a standard hybrid over the enrolled population, replacing one
+citizen's pseudonyms by uniform digests at a time, extends it to the statement that the
+joint distribution of all pseudonyms is computationally independent of the registry, at a
+cost linear in the number of enrolled citizens. There is additionally no traffic to correlate: the protocol defines no
+message from citizen or website to the GA after enrollment, so timing and intersection
+attacks in the style of mix-network analysis have no government-side observation to work
+with. The residual signal is the website-side one that any web service has (IP address,
+timing), which is out of scope by Section~\ref{sec:model} and unchanged by this system.
+\end{corollary}
+
+\subsection{Cross-site and cross-epoch unlinkability (G3, R3)}
+
+\begin{theorem}
+\label{thm:unlink}
+Let $(D, e) \ne (D', e')$ be distinct domain-epoch pairs and consider the following game.
+The adversary controls the GA and all websites and enrolls two honest wallets with secrets
+$s_0, s_1 \in \Fp^4$; the challenger flips $\beta \in \{0,1\}$ and returns the token of
+$s_0$ at $(D, e)$ together with the token of $s_\beta$ at $(D', e')$, that is, the
+pseudonyms $k = \PRF(s_0, \CtxHash(D, e))$ and $k' = \PRF(s_\beta, \CtxHash(D', e'))$ with
+their proofs. Under the model of Theorem~\ref{thm:anon}, no adversary decides whether the
+two tokens come from one secret ($\beta = 0$) or two ($\beta = 1$) with advantage above
+$O(q)\,2^{-253}$, where $q$ bounds its oracle and permutation queries.
+\end{theorem}
+
+\begin{proof}
+Write $c = \CtxHash(D, e)$ and $c' = \CtxHash(D', e')$. As $\CtxHash$ is SHAKE256 with
+rejection sampling, modeled as a random oracle, its outputs on the two distinct inputs
+$(D, e) \ne (D', e')$ are independent and uniform on $\Fp^4$, so $c \ne c'$ except with
+probability $p^{-4} < 2^{-255}$. This is a collision between two fixed inputs, so the
+bound does not depend on how many queries the adversary makes. Apply the hybrid sequence of
+Theorem~\ref{thm:anon} to both tokens simultaneously: the simulation step is per-token and
+unchanged; the replacement step substitutes both pseudonyms by uniform values, justified
+by the same random permutation argument, since the two outer PRF calls evaluate $P$ at
+distinct points (their rate halves differ by $c$ versus $c'$) and are therefore jointly
+uniform and independent unless the adversary queries $P$ at a point whose rate half is
+$s_0$ or $s_1$, which each of its $q$ queries does with probability at most $2^{-255}$.
+When $\beta = 0$ the two outer calls share one inner image and when $\beta = 1$ they use
+two, but in both cases the evaluation points are distinct, which is why the case
+distinction never surfaces in the adversary's view. In the
+final hybrid both tokens are independent uniform samples, a distribution identical under
+$\beta = 0$ and $\beta = 1$, so the advantage there is zero; summing the hybrid distances
+gives the stated bound. Within a single $(D, e)$, linkability of two visits is intentional
+($k$ is deterministic) and disclosed as the pseudonymity property.
+\end{proof}
+
+\subsection{Replay resistance (G4)}
+
+\begin{theorem}
+\label{thm:replay}
+Let $(k, e, D, \pi)$ be a token produced by an honest wallet and accepted by site $D$ with
+nonce $n$. Except with probability at most $(q^2 + 3\tau)\,2^{-256} + 3^{-\tau}$, the
+token verifies at no other tuple $(D', e', \mathit{root}', k', n') \ne (D, e,
+\mathit{root}, k, n)$, and at $(D, n)$ itself at most once.
+\end{theorem}
+
+\begin{proof}
+Write the proof as a transcript body $T$ (all commitments and output shares) plus openings
+$O$ for the challenge vector $\chall \in \{0,1,2\}^\tau$, derived as $\chall = \RO(\mathrm{prefix}
+\,\|\, \mathit{ctx} \,\|\, T)$, where $\RO$ is the random oracle instantiating the
+Fiat-Shamir hash (SHA3-256), $\mathrm{prefix}$ is the protocol's fixed domain-separation
+string, and $\mathit{ctx} = \Enc(D, e, \mathit{root}, k, n)$; $\chall_i$ denotes the $i$-th
+entry of $\chall$ and party indices are taken modulo 3. Honest generation draws the three
+per-repetition seeds independently and uniformly, so within a repetition the three seeds
+are pairwise distinct except with probability at most $3\,2^{-256}$, hence at most
+$3\tau\,2^{-256}$ over all $\tau$ repetitions. A verifier for
+a different tuple derives $\chall' = \RO(\mathrm{prefix} \,\|\, \mathit{ctx}' \,\|\, T)$. The two contexts encode
+distinct tuples, so $\mathit{ctx}' \ne \mathit{ctx}$ as bitstrings by
+Lemma~\ref{lem:enc}, and $\chall' = \chall$ only if the random oracle
+collides on distinct inputs, probability at most $q^2 2^{-256}$ over the adversary's
+queries; otherwise $\chall'$ is uniform on the $\tau$-fold challenge space and independent of
+$\chall$. The openings $O$ contain, for each repetition $i$, the seeds of parties $\chall_i$ and
+$\chall_i + 1$ and the multiplication outputs of party $\chall_i + 1$. If $\chall'_i \ne \chall_i$ at any
+repetition, the verifier interprets the provided seeds as belonging to parties $\chall'_i$ and
+$\chall'_i + 1$ and checks them against the commitments at those indices; each commitment
+contains its own party's fresh 256-bit seed, and those seeds are pairwise distinct, so a
+seed committed at one index opens the
+commitment at a different index only via a random-oracle collision, already accounted for.
+Acceptance therefore requires $\chall' = \chall$ exactly, an event of probability $3^{-\tau}$, which
+for $\tau = 219$ is below $2^{-347}$. Re-presentation at $(D, n)$ itself is blocked by the
+verifier's local consumed-nonce state, which needs no coordination with any other party;
+and a fresh nonce at the same site changes $\mathit{ctx}$, reducing to the case above.
+\end{proof}
+
+\paragraph{Remark.} A wallet that deviates from honest randomness (for example, giving all
+three parties identical seeds) can craft tokens of its own that verify under several
+challenge vectors and are therefore replayable by third parties. This weakens nothing but
+the misbehaving wallet's own binding: it grants adulthood attestations only with the
+wallet owner's active cooperation, which is exactly the voluntary-sharing case of
+Section~\ref{sec:limits}.
+
+\subsection{Threshold isolation (multi-threshold deployments)}
+\label{sec:isolation}
+
+This subsection proves the claim of Section~\ref{sec:thresholds}, mechanism 1: a token is
+usable against exactly the threshold it was produced for, and testing it against any other
+threshold produces a verdict that carries no information about the visitor.
+
+\begin{proposition}[Threshold isolation]
+\label{prop:isolation}
+Let $a \ne b$ be age thresholds with published roots $\mathit{root}_a$, $\mathit{root}_b$,
+and let $(k, e, D, \pi)$ be a token produced by an honest wallet for threshold $a$ at
+domain $D$ and epoch $e$ with website nonce $n$, that is, a proof of $S(\mathit{root}_a,
+k, c_a)$ with $c_a = \CtxHash(D, e, a)$, transcript-bound as in
+Section~\ref{sec:thresholds}. For every nonce $n'$, a verifier that checks this token
+against threshold $b$, that is, against $(\mathit{root}_b, c_b = \CtxHash(D, e, b), n')$,
+accepts with probability at most $(q^2 + 3\tau)\,2^{-256} + 3^{-\tau}$, where $q$ bounds
+the adversary's random-oracle queries and $\tau$ is the repetition count
+(Section~\ref{sec:security}). The bound holds uniformly over all wallets; in particular
+it does not depend on whether the wallet's leaf lies in $\tree_b$.
+\end{proposition}
+
+\begin{proof}
+The threshold's encoding into the Fiat-Shamir context is injective. Both sides derive the
+context from their own $(D, a)$ by forming the string $D \,\|\, \texttt{\#} \,\|\, a$ and
+using it in place of the bare domain, and \texttt{\#} occurs in no hostname, so the map
+$(D, a) \mapsto D \,\|\, \texttt{\#} \,\|\, a$ is injective and $a \ne b$ forces distinct
+domain fields. Hence the prover's context bitstring $\mathit{ctx}_a$, encoding $(D
+\,\|\, \texttt{\#} \,\|\, a,\, e,\, \mathit{root}_a,\, k,\, n)$, and the $b$ verifier's
+$\mathit{ctx}_b$, encoding $(D \,\|\, \texttt{\#} \,\|\, b,\, e,\, \mathit{root}_b,\, k,\,
+n')$, differ as bitstrings for every choice of $n'$: they already differ in the domain
+field, whether or not $\mathit{root}_a$ and $\mathit{root}_b$ happen to coincide.
+Lemma~\ref{lem:enc} then gives $\mathit{ctx}_a \ne \mathit{ctx}_b$, and
+Theorem~\ref{thm:replay} applies verbatim with the target tuple taken to be the $b$
+verifier's tuple, yielding the stated bound. Its derivation uses only the honest
+generation of $\pi$ (independent uniform seeds) and random-oracle properties; at no point
+does it reference the wallet's witness or the contents of $\tree_b$. Hence every wallet's
+token is rejected by the $b$ verifier with probability at least $1 - (q^2 +
+3\tau)\,2^{-256} - 3^{-\tau}$: the verdict has the same distribution whether or not the
+holder is enrolled in $\tree_b$, and a test whose output distribution does not depend on
+the holder conveys nothing about the holder. That is the claimed uniformity.
+\end{proof}
+
+\subsection{Post-quantum security (G5, R5)}
+\label{sec:pq}
+
+Every security property above reduces to: preimage resistance and PRF security of
+Poseidon2-based functions with 256-bit capacity and digests, which Grover \cite{grover}
+reduces to 128 bits; collision resistance of the same functions, which deserves a separate
+accounting given below; random-oracle behavior of SHA3/SHAKE, where soundness of the
+Fiat-Shamir transformation against quantum adversaries follows from the
+measure-and-reprogram analyses for commit-and-open protocols in the quantum random oracle
+model \cite{qromfs}, whose polynomial query losses are absorbed by our $2^{-128}$
+classical soundness margin; and EUF-CMA of ML-DSA-65 under Module-LWE and Module-SIS
+\cite{regev,dilithium}, NIST category 3. No discrete-log, factoring, or pairing assumption
+appears anywhere. Note the contrast with pre-quantum anonymous-credential deployments:
+here even the issuer's signature protects only root authenticity; a future break of ML-DSA
+would permit root forgery (a soundness attack, mitigated by re-signing with a successor
+scheme such as the hash-based SPHINCS+ family \cite{sphincs}) but could never
+retroactively deanonymize anyone, because no signature ever touches a per-citizen value.
+
+\paragraph{Collision resistance under quantum attack.} Grover is the wrong tool for
+collisions and we do not claim 128-bit quantum collision resistance. Our 256-bit digests
+give 128-bit classical collision resistance; the BHT algorithm \cite{bht} finds collisions
+in about $2^{85}$ quantum operations, but needs comparable quantum-accessible memory, and
+under any cost metric that charges for that memory it does not beat classical parallel
+search \cite{bernsteincoll}. Two observations bound the consequences. First, no privacy
+property rests on collision resistance of $\LeafHash$ or $\Compress$: Theorems
+\ref{thm:anon} and \ref{thm:unlink} use only the random-permutation behavior of $P$ and
+the min-entropy of $s$, so even a full collision break costs no anonymity, and it is
+anonymity that cannot be repaired after the fact. Second, the properties that do rest on
+collision resistance are repairable in place, and it is worth separating which function
+each one needs. Unforgeability (Theorem~\ref{thm:unforge}) needs collision resistance of
+$\LeafHash$ and $\Compress$, both Poseidon2 with 256-bit digests. The separation of
+contexts in Theorem~\ref{thm:unlink} needs $\CtxHash$ to be collision resistant, which is
+a property of SHAKE256 truncated to $\Fp^4$, not of Poseidon2; the two are widened
+together, since both outputs are four field elements. Neither degrades below the $2^{85}$
+figure, and that figure holds only under the optimistic memory model. A jurisdiction that
+judges the margin insufficient widens both digests to six field elements, about 384 bits
+(state width $t = 12$, the Poseidon2 parameter set whose known-answer vector we already
+validate against), at a cost linear in the circuit size and with no change to the protocol
+or to any proof above. Note that the injectivity of the \emph{context encoding}
+(Lemma~\ref{lem:enc}), on which Theorem~\ref{thm:replay} and
+Proposition~\ref{prop:isolation} rest, is a syntactic property of a byte layout and is not
+affected by any cryptanalytic advance at all.
+
+\subsection{What the system does not solve}
+\label{sec:limits}
+
+\paragraph{Voluntary lending.} An adult may run the wallet for a minor, or hand over the
+device. No credential system prevents this without continuous biometric presence-testing,
+which would destroy the privacy goal. Mitigations are friction and consequence: epoch
+rotation limits the blast radius of a shared secret; revocation punishes detected
+commercial lending (a lent secret used at scale is statistically visible to sites as one
+pseudonym with implausible behavior, reportable for revocation without identifying
+anyone); optional device binding (secret sealed in a secure element) raises extraction
+cost. We consciously reject the addition of a per-use government authorization step: it
+would add a metadata channel while, being blind, it could not actually bind uses to
+persons, so it would purchase surveillance risk and buy no sharing resistance.
+
+\paragraph{Sybil and soundness attacks by the GA.} A malicious GA can enroll fictitious
+adults or refuse real ones. This is an attack on soundness and fairness, not on privacy,
+and it is auditable: the tree is public and append-only, its growth must match published
+demographic statistics, and each insertion can be required to carry a transparency-log
+inclusion receipt.
+
+\paragraph{Split-view roots.} A GA serving a victim a personalized root is detected by
+bundle gossip (Section~\ref{sec:rootpub}); a wallet that verifies its bundle against two
+independent mirrors reduces the attack to requiring collusion of the mirrors.
+
+\paragraph{Enrollment coercion and the enrollment event itself.} The GA knows who
+enrolled. Enrollment must therefore be normalized (bundled with routine eID issuance for
+all adults, not requested on demand) so that holding a credential carries zero information
+about intent to use it.
+
+\section{Implementation}
+\label{sec:impl}
+
+The reference implementation is about 1{,}150 lines of dependency-light Python in
+\texttt{code/python/} (\texttt{core.py}: field, Poseidon2 native and circuit evaluation,
+sparse Merkle tree, prover and verifier, binary wire codec; \texttt{protocol.py}: GA,
+wallet with encrypted storage, website verifier), plus a test suite and a scenario demo.
+Everything in this paper, including its sources, is at
+\url{https://github.com/Kidev/ZeroKnowledgeAgeVerification}. Design points of engineering
+interest:
+
+\paragraph{Engine-generic circuit.} The circuit is written once against an abstract engine
+interface (const, add, sub, add-constant, mul-constant, mul) and executed by three
+engines: a native engine on field elements (used by GA, wallet, and website for tree
+building and expected-output computation), a prover engine on 3-tuples of additive shares
+that appends every multiplication-gate output share to per-party views, and a pair engine
+that replays the two challenged parties for the verifier, recomputing the first and
+consuming the second's committed outputs. The native permutation is generic in the state
+width, so the Poseidon2 designers' published $t = 12$ Goldilocks known-answer vector is
+checked through that same routine rather than through a second implementation written for
+the test; the circuit engine's permutation is then cross-checked against it at $t = 8$ on
+random states, and the $t = 8$ constants are extracted verbatim from the designers'
+reference implementation. The chain from published vector to proving circuit therefore has
+no link that a test could satisfy while production code drifted.
+
+\paragraph{Determinism and view minimization.} Party tapes are expanded from 32-byte seeds
+by SHAKE256 in counter mode with rejection sampling (exactly uniform field elements);
+parties 0 and 1 take their input shares from their tape prefixes, so an opening transmits
+only two seeds, the neighbor's multiplication outputs, and (when party 2 is opened) its
+input shares. Commitments are SHA3-256 over seed and view; the verifier recomputes the
+challenged party's view rather than receiving it, so a corrupted committed view is caught
+with certainty, not probability.
+
+\paragraph{Wire format and hardening.} Proofs serialize to a versioned binary format with
+fixed layouts derived from the depth and repetition count, with every multi-byte integer
+little-endian independently of host byte order, so the format is a specification rather
+than an artifact of one architecture. The verifier is total: it validates commitment
+lengths, share ranges, view lengths, and exact tape consumption \emph{before} any value
+reaches a hash input, returns false on every malformed input rather than raising, and
+treats the transcript hash as the single source of challenge truth. The wire decoder
+bounds the depth and repetition count declared in the header, and cross-checks them
+against the blob length, before sizing any allocation from them; a decoder that trusts an
+attacker-supplied length is a memory exhaustion primitive. Both properties are covered by
+the test suite.
+
+\paragraph{Failure containment.} The wallet secret is 4 uniform field elements generated
+by the OS CSPRNG, stored only under scrypt-derived AES-256-GCM, and used solely inside
+$\LeafHash$ and $\PRF$; there is no code path that serializes it into any protocol
+message. Domain strings are rejected if they contain the context separator, which is what
+discharges the hypothesis of Lemma~\ref{lem:enc} rather than assuming it.
+
+\paragraph{Threshold binding.} In multi-threshold deployments
+(Section~\ref{sec:thresholds}) the threshold enters the signed root bundle, the proof
+context (encoded as the context string \texttt{domain\#threshold}; \texttt{\#} cannot
+occur in a hostname, so single-set deployments remain byte-compatible), and the wallet's
+per-domain pin store, persisted inside the encrypted wallet file. The wallet exposes the
+requested threshold for display before proving; a threshold change raises a dedicated
+warning type that the UI must surface, and proving proceeds only under an explicit
+override flag. The warning check runs before any membership-dependent computation, so
+wallet behavior on a threshold change is independent of the holder's age. If the holder
+turns out to hold no leaf in the requested accumulator, the wallet declines locally
+instead of emitting a proof that cannot verify: a failing proof would announce ``this
+holder is below that threshold'', whereas a local decline is indistinguishable, from the
+site's side, from a user who simply refused. The site sees two outcomes, token or no
+token, rather than three.
+
+\paragraph{Native port.} A Rust implementation of the field, permutation, tree, circuit
+engines, prover, and verifier (\texttt{code/rust/}, about 1{,}250 lines, sharing the
+Fiat-Shamir transcript and binary wire format) is pinned to the reference by known-answer
+tests extracted from the Python code and by wire-format interoperability: each
+implementation verifies, at full parameters, proofs produced by the other, so the two
+codebases cannot drift apart silently. Its measured performance is reported in
+Section~\ref{sec:perf}.
+
+\section{Performance}
+\label{sec:perf}
+
+\subsection{Measured}
+
+Single core of an AMD Ryzen~9 7950X, CPython 3.14, pure Python (no native
+extensions), $\tau$ repetitions, depth-$d$ tree:
+
+\begin{center}
+\begin{tabular}{rrrlrrr}
+\toprule
+depth $d$ & capacity & $\tau$ & soundness & prove & verify & proof size \\
+\midrule
+20 & 1.05\,M  & 219 & $< 2^{-128}$ & 3.1\,s & 2.0\,s & 14.3\,MB \\
+27 & 134\,M   & 219 & $< 2^{-128}$ & 4.1\,s & 2.6\,s & 18.7\,MB \\
+32 & 4.29\,B  & 137 & $< 2^{-80}$  & 3.0\,s & 1.9\,s & 13.6\,MB \\
+32 & 4.29\,B  & 219 & $< 2^{-128}$ & 4.7\,s & 3.0\,s & 21.8\,MB \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Enrollment is one hash and one $O(d)$ tree insertion (microseconds to milliseconds); root
+bundle signing is one ML-DSA-65 signature (3{,}309 bytes); wallet encryption and
+decryption are dominated by scrypt at about 100\,ms.
+
+The native Rust port of the same backend (Section~\ref{sec:impl}), producing
+byte-identical proofs, measures on the same machine, on which CPython takes 4.7\,s to
+prove and 3.0\,s to verify at $d = 32$, $\tau = 219$:
+
+\begin{center}
+\begin{tabular}{rrrlrrr}
+\toprule
+depth $d$ & capacity & $\tau$ & soundness & prove & verify & proof size \\
+\midrule
+32 & 4.29\,B  & 137 & $< 2^{-80}$  & 0.20\,s & 0.12\,s & 13.6\,MB \\
+32 & 4.29\,B  & 219 & $< 2^{-128}$ & 0.33\,s & 0.18\,s & 21.8\,MB \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+That is roughly fifteen times faster than CPython on the same machine, from a
+straightforward port with no low-level optimization, and already under a second at full
+parameters on one core; repetitions additionally parallelize across cores.
+
+\subsection{Cost model}
+
+The circuit has $344(d+3) + 5d$ multiplication gates; prover work is $3\tau$ times that,
+verifier work $2\tau$ times, and proof size is dominated by the transmitted neighbor views
+at 8 bytes per gate per repetition. All costs are linear in both $d$ and $\tau$ and
+embarrassingly parallel across repetitions.
+
+\subsection{Deployment path}
+\label{sec:deploypath}
+
+The measured numbers above show the reference backend already crossing the sub-second bar
+in its native port. Two further steps, neither changing the protocol or the statement,
+close the remaining gap to interactive-latency deployment. (i) Native optimization of the
+included Rust prover: vectorized Keccak for tape expansion, in-place circuit evaluation,
+precomputed share layouts, and parallelism across repetitions bring proving to the low
+hundreds of milliseconds and below on commodity hardware. (ii) Replacing the backend
+with a hash-based STARK or a modern MPC-in-the-head system (KKW/Picnic3-style
+preprocessing, or VOLE-in-the-head) over the identical Poseidon2 circuit reduces proofs to
+the 100 to 250\,KB range and verification to tens of milliseconds, with the same
+no-trusted-setup, symmetric-only trust profile. Because verification is website-local,
+aggregate system capacity is simply the sum of website capacity; the government's serving
+burden is a static file (the bundle and tree deltas) on a CDN. There is no
+per-verification government cost at any scale, which is not an optimization but the point.
+
+\section{Deployment Considerations}
+\label{sec:deploy}
+
+\paragraph{Rollout.} Enroll by cohort alongside routine national eID operations so
+possession is universal among adults and signals nothing. Publish the tree and bundles
+from day one with independent mirrors and an append-only audit log. Ship the wallet as
+reproducibly built open source in app stores and as a browser extension; the proving key
+material is nil (no trusted setup), so distribution integrity is the only supply-chain
+concern.
+
+\paragraph{Website integration.} A site embeds the bundle-verification key, fetches
+bundles on a schedule, issues nonces, and calls a verifier library; the entire integration
+is stateless except nonce and pseudonym storage. Regulators can certify libraries rather
+than audit data flows, because there are no data flows.
+
+\paragraph{Legal framework.} Legislation should (i) authorize commitment-based enrollment,
+(ii) recognize a verified token as compliance with age-gating duties, discharging website
+liability, (iii) prohibit websites from demanding any additional identity signal when a
+token is presented, including proofs against any age threshold above the one their duty
+requires (Section~\ref{sec:thresholds}), and (iv) mandate the transparency obligations of
+Section~\ref{sec:rootpub}. Point (iii) matters: the system's guarantee is only as good as
+the prohibition on asking for more.
+
+\paragraph{Governance of the one central artifact.} The root is the sole trusted object.
+Its signing key should live in an HSM with a published rotation and successor-algorithm
+policy (Section~\ref{sec:pq}), and bundle history should be anchored in at least one
+system outside government control.
+
+\section{Layman's Explanation}
+
+Suppose the government publishes a long public list of scrambled codes, one per adult.
+The
+scrambling is one way: only your wallet, an open-source app running on your own device,
+knows the secret that produces your code, a secret it generated by itself, offline,
+without contacting any server. The government knows it placed your code on the list; that is
+the entirety of what it will ever know.
+
+When a website requires proof of age, the wallet produces a zero-knowledge proof, a
+cryptographic technique established in the 1980s and in production use today. Think of
+the government's list as a single closed chain made of millions of padlocks, one per
+adult,
+and imagine you are wearing a mask. You hold the key to exactly one of those padlocks. To
+prove you are an adult, you do not point at your padlock and you do not show your face:
+you simply open the chain. A chain can only be opened by unlocking one of its padlocks,
+so everyone watching is convinced you hold a genuine key; the mask, played here by the
+zero-knowledge layer, guarantees that nobody can tell which padlock you unlocked, and
+therefore who you are. The demonstration is repeated a few hundred times with fresh
+randomness, leaving someone with no key less than one chance in $2^{128}$ of faking it.
+The website learns one fact, an adult is present, and receives a pseudonym valid only on
+that site and for one month, enough to recognize a returning visitor; pseudonyms on
+different sites are mathematically unrelated.
+
+For the reader who assumes the worst of the government: after enrollment, your wallet
+never communicates with it again, directly or indirectly. When you visit a site, no
+message exists that could be intercepted, logged, demanded, or leaked, because none is
+sent. Nobody needs to be trusted to delete records of your visits; those records cannot
+come into existence. The mathematics is public, the software is open to inspection and
+reproducible builds, and the government's single publication is a list anyone can audit
+for dishonest edits. A fully hostile government could stop adding adults or strike people
+from the list, but only in public, where every change is visible. What it cannot do, with
+any computer including a quantum one, is learn that you visited a particular site. The
+website, for its part, knows only that some adult presented a valid proof.
+
+\section{Conclusion}
+
+The debate around online age verification presents privacy and child protection as
+opposed. They are opposed only under bad architectures. By reducing the government's role
+to publishing one signed list of scrambled commitments and pushing all verification into
+local mathematics between citizen and website, this design achieves the strong form of
+both properties simultaneously: websites obtain a sound adulthood attestation, and the
+mapping from visits to citizens does not exist as data anywhere, under collusion, under
+compulsion, and under quantum attack. The construction uses only standardized or
+academically established components: Poseidon2, MPC-in-the-head zero knowledge, SHA-3,
+and ML-DSA. The reference implementation accompanying this paper demonstrates every
+claimed behavior and every analyzed attack. What remains is engineering (faster proof
+backends, wallet distribution) and legislation (mandating that a token is enough). Neither
+remaining task requires trusting anyone with the one thing this system was built to make
+untrustable.
+
+\bibliographystyle{plain}
+\bibliography{sources}
+
+\end{document}

@@ -1,0 +1,15 @@
+[package]
+name = "avsm-poc"
+version = "0.1.0"
+edition = "2021"
+description = "Native Rust proof of concept for the avsm anonymous set membership protocol, wire compatible with the Python reference implementation"
+license = "MIT"
+
+[dependencies]
+sha3 = "0.10"
+getrandom = "0.2"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

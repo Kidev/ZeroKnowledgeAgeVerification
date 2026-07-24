@@ -1,0 +1,29 @@
+cff-version: 1.2.0
+message: "If you use this work, please cite it as below. Zenodo reads this file automatically when a GitHub release is archived."
+title: "Post-Quantum Anonymous Set Membership for Surveillance-Free Online Age Verification"
+authors:
+  - family-names: "Poumaroux"
+    given-names: "Alexandre"
+    orcid: "https://orcid.org/0009-0001-6772-0905"
+    alias: "kidev"
+    website: "https://kidev.org"
+type: software
+repository-code: "https://github.com/Kidev/ZeroKnowledgeAgeVerification"
+license: MIT
+keywords:
+  - age verification
+  - anonymous credentials
+  - zero-knowledge proofs
+  - post-quantum cryptography
+  - privacy
+preferred-citation:
+  type: article
+  title: "Post-Quantum Anonymous Set Membership for Surveillance-Free Online Age Verification"
+  authors:
+    - family-names: "Poumaroux"
+      given-names: "Alexandre"
+      orcid: "https://orcid.org/0009-0001-6772-0905"
+      alias: "kidev"
+      website: "https://kidev.org"
+  year: 2026
+  license: CC-BY-4.0
