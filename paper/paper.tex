@@ -965,8 +965,9 @@ than audit data flows, because there are no data flows.
 liability, (iii) prohibit websites from demanding any additional identity signal when a
 token is presented, including proofs against any age threshold above the one their duty
 requires (Section~\ref{sec:thresholds}), and (iv) mandate the transparency obligations of
-Section~\ref{sec:rootpub}. Point (iii) matters: the system's guarantee is only as good as
-the prohibition on asking for more.
+Section~\ref{sec:rootpub}. Point (iii) is a liability backstop rather than a load-bearing
+assumption: the threshold mechanism of Section~\ref{sec:thresholds} already makes escalation
+self-defeating, so the guarantee does not depend on the prohibition.
 
 \paragraph{Governance of the one central artifact.} The root is the sole trusted object.
 Its signing key should live in an HSM with a published rotation and successor-algorithm
@@ -989,8 +990,8 @@ adult,
 and imagine you are wearing a mask. You hold the key to exactly one of those padlocks. To
 prove you are an adult, you do not point at your padlock and you do not show your face:
 you simply open the chain. A chain can only be opened by unlocking one of its padlocks,
-so everyone watching is convinced you hold a genuine key; the mask, played here by the
-zero-knowledge layer, guarantees that nobody can tell which padlock you unlocked, and
+so everyone watching is convinced you hold a genuine key; the mask (here, the
+zero-knowledge layer) guarantees that nobody can tell which padlock you unlocked, and
 therefore who you are. The demonstration is repeated a few hundred times with fresh
 randomness, leaving someone with no key less than one chance in $2^{128}$ of faking it.
 The website learns one fact, an adult is present, and receives a pseudonym valid only on

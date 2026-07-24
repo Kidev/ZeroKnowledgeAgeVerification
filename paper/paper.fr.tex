@@ -1061,8 +1061,10 @@ engagement, (ii) reconnaître un jeton vérifié comme conformité aux obligatio
 d'âge, libérant la responsabilité du site, (iii) interdire aux sites d'exiger tout signal
 d'identité supplémentaire quand un jeton est présenté, y compris toute preuve contre un
 seuil d'âge supérieur à celui que leur obligation exige (Section~\ref{sec:thresholds}), et
-(iv) rendre obligatoires les exigences de transparence de la Section~\ref{sec:rootpub}. Le point (iii) compte : la
-garantie du système ne vaut que ce que vaut l'interdiction d'en demander davantage.
+(iv) rendre obligatoires les exigences de transparence de la Section~\ref{sec:rootpub}. Le point (iii) constitue un
+filet de responsabilité plutôt qu'une hypothèse porteuse : le mécanisme de seuils de la
+Section~\ref{sec:thresholds} rend déjà toute escalade contre-productive, de sorte que la
+garantie ne dépend pas de l'interdiction.
 
 \paragraph{Gouvernance de l'unique artefact central.} La racine est le seul objet de
 confiance. Sa clé de signature devrait résider dans un HSM avec une politique publiée de
@@ -1086,8 +1088,8 @@ chaîne fermée faite de millions de cadenas, un par adulte, et imaginez que vou
 masque. Vous détenez la clé d'exactement un de ces cadenas. Pour prouver votre majorité,
 vous ne désignez pas votre cadenas et vous ne montrez pas votre visage : vous ouvrez
 simplement la chaîne. Une chaîne ne peut s'ouvrir qu'en déverrouillant un de ses cadenas,
-donc tous les témoins sont convaincus que vous détenez une clé authentique ; le masque,
-joué ici par la couche à divulgation nulle, garantit que personne ne peut dire quel
+donc tous les témoins sont convaincus que vous détenez une clé authentique ; le masque
+(ici, la couche à divulgation nulle) garantit que personne ne peut dire quel
 cadenas vous avez ouvert, ni donc qui vous êtes. La démonstration est répétée quelques
 centaines de fois avec de l'aléa frais, laissant à qui n'a pas de clé moins d'une chance
 sur $2^{128}$ de tricher. Le site

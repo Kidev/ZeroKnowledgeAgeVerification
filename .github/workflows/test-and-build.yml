@@ -55,29 +55,3 @@ jobs:
         run: make rust
       - name: Wire-format interoperability, both directions
         run: make interop
-
-  release:
-    needs: [paper, python, rust]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v7.0.1
-      - name: Collect the built papers
-        uses: actions/download-artifact@v8.0.1
-        with:
-          name: papers
-          path: dist-artifacts
-      - name: Publish the release
-        uses: softprops/action-gh-release@v3.0.2
-        with:
-          name: "Post-Quantum Anonymous Set Membership for Surveillance-Free Online Age Verification"
-          body: |
-            We present a protocol that lets websites verify that a visitor is above the age
-            of majority while making it cryptographically impossible for either the verifying
-            website or the issuing government to learn who the visitor is or which sites any
-            citizen visits. 
-          files: |
-            dist-artifacts/paper/paper.pdf
-            dist-artifacts/paper/paper.fr.pdf
-            dist-artifacts/dist/arxiv.tar
