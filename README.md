@@ -41,7 +41,7 @@ It works in two steps.
 
 The guarantee does not depend on anyone behaving well. All the mathematics is public, all the code is open source, and every security property is proven in the paper, including against quantum computers. The full protocol, its formal proofs, its measured performance, and an honest list of what it cannot do (nothing stops an adult from lending their credential) are in the article:
 
-**Read the full paper: [English (PDF)](paper/paper.pdf) | LaTeX sources in [`paper/`](paper/)**
+**Read the full paper: [English (PDF)](https://github.com/Kidev/ZeroKnowledgeAgeVerification/releases/latest/download/paper.pdf) | LaTeX sources in [`paper/`](paper/)**
 
 ### Try it
 
@@ -97,7 +97,7 @@ Cela fonctionne en deux étapes.
 
 La garantie ne dépend de la bonne conduite de personne. Toutes les mathématiques sont publiques, tout le code est open source, et chaque propriété de sécurité est prouvée dans l'article, y compris face aux ordinateurs quantiques. Le protocole complet, ses preuves formelles, ses performances mesurées et la liste honnête de ce qu'il ne peut pas faire (rien n'empêche un adulte de prêter son justificatif) sont dans l'article:
 
-**Lire l'article complet: [Français (PDF)](paper/paper.fr.pdf) | Sources LaTeX dans [`paper/`](paper/)**
+**Lire l'article complet: [Français (PDF)](https://github.com/Kidev/ZeroKnowledgeAgeVerification/releases/latest/download/paper.fr.pdf) | Sources LaTeX dans [`paper/`](paper/)**
 
 ### Essayer
 
